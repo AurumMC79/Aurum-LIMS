@@ -8,7 +8,17 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, MetaData, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    LargeBinary,
+    MetaData,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.types import TypeDecorator
 
@@ -362,6 +372,12 @@ class Analysis(Base):
     signature_id: Mapped[int | None] = mapped_column(ForeignKey("electronic_signatures.id"))
     cancel_reason: Mapped[str | None] = mapped_column(Text)
     comment: Mapped[str | None] = mapped_column(Text)
+    # Phase 4: each re-sign after a review return creates a new revision of the results.
+    revision: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    reviewed_at: Mapped[datetime | None]
+    reviewed_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    review_signature_id: Mapped[int | None] = mapped_column(ForeignKey("electronic_signatures.id"))
+    review_comment: Mapped[str | None] = mapped_column(Text)
 
 
 class ResultValue(Base):
@@ -402,6 +418,7 @@ class ReportableResult(Base):
     conformance: Mapped[str] = mapped_column(String(16))
     comment: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    revision: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
 
 
 class OOSInvestigation(Base):
@@ -428,3 +445,40 @@ class OOSInvestigation(Base):
     closed_at: Mapped[datetime | None]
     closed_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     signature_id: Mapped[int | None] = mapped_column(ForeignKey("electronic_signatures.id"))
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: sample decisions and certificates
+# ---------------------------------------------------------------------------
+
+
+class SampleDecision(Base):
+    """QA's final decision on a sample (Approved / Rejected). Immutable."""
+
+    __tablename__ = "sample_decisions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sample_id: Mapped[int] = mapped_column(ForeignKey("samples.id"), index=True)
+    decision: Mapped[str] = mapped_column(String(16))
+    conforms: Mapped[bool] = mapped_column(Boolean)
+    comment: Mapped[str | None] = mapped_column(Text)
+    decided_at: Mapped[datetime] = mapped_column(default=utcnow)
+    decided_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    signature_id: Mapped[int] = mapped_column(ForeignKey("electronic_signatures.id"))
+
+
+class Certificate(Base):
+    """An issued Certificate of Analysis or Test Report, stored as the exact PDF
+    that was issued, with its SHA-256 fingerprint. Immutable."""
+
+    __tablename__ = "certificates"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    number: Mapped[str] = mapped_column(String(32), unique=True)
+    kind: Mapped[str] = mapped_column(String(32))
+    sample_id: Mapped[int] = mapped_column(ForeignKey("samples.id"), index=True)
+    decision_id: Mapped[int] = mapped_column(ForeignKey("sample_decisions.id"))
+    issued_at: Mapped[datetime] = mapped_column(default=utcnow)
+    issued_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    pdf: Mapped[bytes] = mapped_column(LargeBinary)
+    sha256: Mapped[str] = mapped_column(String(64))

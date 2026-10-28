@@ -54,14 +54,17 @@ MAX_VALUE_LENGTH = 64
 class AnalysisStatus(StrEnum):
     PENDING = "Pending"
     IN_PROGRESS = "In Progress"
+    RETURNED = "Returned"
     COMPLETE = "Complete"
+    REVIEWED = "Reviewed"
     CANCELLED = "Cancelled"
 
 
-OPEN_ANALYSIS = (AnalysisStatus.PENDING, AnalysisStatus.IN_PROGRESS)
+# Tests whose results can still be entered or changed.
+OPEN_ANALYSIS = (AnalysisStatus.PENDING, AnalysisStatus.IN_PROGRESS, AnalysisStatus.RETURNED)
 # Sample statuses in which tests may be assigned / results entered.
-ASSIGNABLE = {SampleStatus.REGISTERED, SampleStatus.RECEIVED, SampleStatus.IN_TESTING, SampleStatus.TESTING_COMPLETE}
-TESTABLE = {SampleStatus.RECEIVED, SampleStatus.IN_TESTING, SampleStatus.TESTING_COMPLETE}
+TESTABLE = {SampleStatus.RECEIVED, SampleStatus.IN_TESTING, SampleStatus.TESTING_COMPLETE, SampleStatus.REVIEWED}
+ASSIGNABLE = TESTABLE | {SampleStatus.REGISTERED}
 
 
 # ---------------------------------------------------------------------------
@@ -245,18 +248,22 @@ def calculation_for(session: Session, analysis: Analysis,
 
 
 def _refresh_sample_status(session: Session, sample: Sample) -> None:
+    """Keep the sample status in step with its tests:
+    Received → In Testing → Testing Complete (all signed) → Reviewed (all reviewed)."""
     statuses = list(session.scalars(select(Analysis.status).where(Analysis.sample_id == sample.id)))
-    if sample.status not in (SampleStatus.RECEIVED, SampleStatus.IN_TESTING, SampleStatus.TESTING_COMPLETE):
+    if sample.status not in TESTABLE:
         return
     live = [s for s in statuses if s != AnalysisStatus.CANCELLED]
     if not live:
         new = SampleStatus.RECEIVED
-    elif all(s == AnalysisStatus.COMPLETE for s in live):
+    elif all(s == AnalysisStatus.REVIEWED for s in live):
+        new = SampleStatus.REVIEWED
+    elif all(s in (AnalysisStatus.COMPLETE, AnalysisStatus.REVIEWED) for s in live):
         new = SampleStatus.TESTING_COMPLETE
-    elif any(s in (AnalysisStatus.IN_PROGRESS, AnalysisStatus.COMPLETE) for s in live):
+    elif any(s != AnalysisStatus.PENDING for s in live):
         new = SampleStatus.IN_TESTING
     else:
-        new = SampleStatus.RECEIVED if sample.status != SampleStatus.TESTING_COMPLETE else SampleStatus.IN_TESTING
+        new = SampleStatus.RECEIVED if sample.status == SampleStatus.RECEIVED else SampleStatus.IN_TESTING
     if new != sample.status:
         audit.record(session, AuditAction.SAMPLE_UPDATED, entity_type="sample", entity_id=sample.sample_id,
                      old={"status": sample.status}, new={"status": new.value}, reason="Testing status changed")
@@ -323,7 +330,7 @@ def assign_tests(session: Session, actor: SessionUser, sample_pk: int, method_id
     session.flush()
     audit.record(session, AuditAction.TESTS_ASSIGNED, actor=actor, entity_type="sample", entity_id=sample.sample_id,
                  new={"tests": [f"{m.code} v{m.version}" for _, m in created], "assigned_to_id": assigned_to_id})
-    if sample.status == SampleStatus.TESTING_COMPLETE:
+    if sample.status in (SampleStatus.TESTING_COMPLETE, SampleStatus.REVIEWED):
         _refresh_sample_status(session, sample)
     return [a for a, _ in created]
 
@@ -453,9 +460,15 @@ def complete_analysis(session: Session, actor: SessionUser, analysis_id: int, pa
         return result
 
     now = utcnow()
+    # A test returned by the reviewer and signed again gets a new revision of its
+    # results; earlier revisions stay on record.
+    previous = session.scalar(select(func.max(ReportableResult.revision))
+                              .where(ReportableResult.analysis_id == analysis.id))
+    revision = (previous or 0) + 1
+    analysis.revision = revision
     for p in calc.results:
         session.add(ReportableResult(
-            analysis_id=analysis.id, parameter_key=p.key, parameter_name=p.name, unit=p.unit,
+            analysis_id=analysis.id, revision=revision, parameter_key=p.key, parameter_name=p.name, unit=p.unit,
             replicate_values=json.dumps(p.replicate_values, ensure_ascii=False),
             mean=_display(p.mean, p.decimals) if p.mean is not None else None,
             rsd=formulas.format_decimal(p.rsd, 2) if p.rsd is not None else None,
@@ -467,8 +480,13 @@ def complete_analysis(session: Session, actor: SessionUser, analysis_id: int, pa
     analysis.completed_by_id = actor.id
     analysis.signature_id = result.signature.id
     audit.record(session, AuditAction.TEST_COMPLETED, actor=actor, entity_type="test", entity_id=label,
-                 new={p.name: f"{p.reported} ({(p.conformance or Conformance.REPORT).value})" for p in calc.results})
+                 new={"revision": revision,
+                      **{p.name: f"{p.reported} ({(p.conformance or Conformance.REPORT).value})" for p in calc.results}})
+    already_open = set(session.scalars(select(OOSInvestigation.parameter_key).where(
+        OOSInvestigation.analysis_id == analysis.id, OOSInvestigation.status == "Open")))
     for p in calc.failures:
+        if p.key in already_open:
+            continue  # the existing investigation covers the re-signed result
         number = _next_oos_number(session)
         session.add(OOSInvestigation(
             number=number, sample_id=sample.id, analysis_id=analysis.id, parameter_key=p.key,
@@ -544,8 +562,12 @@ def analyses_for_sample(session: Session, actor: SessionUser, sample_pk: int) ->
     return _rows(session, _base().where(Analysis.sample_id == sample_pk).order_by(Analysis.id))
 
 
-def reportable_results(session: Session, analysis_id: int) -> list[ReportableResult]:
-    return list(session.scalars(select(ReportableResult).where(ReportableResult.analysis_id == analysis_id)
+def reportable_results(session: Session, analysis_id: int, revision: int | None = None) -> list[ReportableResult]:
+    """The signed results of a test (current revision unless one is given)."""
+    if revision is None:
+        revision = session.scalar(select(Analysis.revision).where(Analysis.id == analysis_id)) or 1
+    return list(session.scalars(select(ReportableResult).where(ReportableResult.analysis_id == analysis_id,
+                                                               ReportableResult.revision == revision)
                                 .order_by(ReportableResult.id)))
 
 

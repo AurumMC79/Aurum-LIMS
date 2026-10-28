@@ -48,6 +48,8 @@ class SampleStatus(StrEnum):
 
 
 CLOSED_STATUSES = {SampleStatus.DISPOSED, SampleStatus.CANCELLED}
+# QA has made the final decision; a certificate was issued, so details are locked.
+DECIDED_STATUSES = {SampleStatus.APPROVED, SampleStatus.REJECTED}
 # Statuses in which the sample is physically in the lab and can be moved.
 ON_HAND_STATUSES = {
     SampleStatus.RECEIVED, SampleStatus.IN_TESTING, SampleStatus.TESTING_COMPLETE,
@@ -500,8 +502,8 @@ def update_details(session: Session, actor: SessionUser, sample_pk: int, details
     if not reason or not reason.strip():
         raise ValidationError("A reason for the change is required.")
     sample = _get(session, sample_pk)
-    if sample.status in CLOSED_STATUSES:
-        raise ValidationError(f"{sample.sample_id} is {sample.status} and can no longer be changed.")
+    if sample.status in CLOSED_STATUSES | DECIDED_STATUSES:
+        raise ValidationError(f"{sample.sample_id} is {sample.status} and its details can no longer be changed.")
     details = _normalize(details)
     _validate_details(details, Category(session.get(SampleType, sample.sample_type_id).category))
     old, new = {}, {}
