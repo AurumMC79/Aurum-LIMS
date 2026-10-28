@@ -6,7 +6,7 @@ whenever a model here changes, a new migration must be added alongside it.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, MetaData, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -135,3 +135,120 @@ class AppSetting(Base):
     value: Mapped[str] = mapped_column(Text)
     updated_at: Mapped[datetime] = mapped_column(default=utcnow)
     updated_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: samples and chain of custody
+# ---------------------------------------------------------------------------
+
+
+class SampleType(Base):
+    """A kind of sample (Raw Material, Finished Product, Stability...). The
+    category decides which descriptive fields the sample form asks for. A type
+    may have its own sample ID format; otherwise the lab-wide format is used."""
+
+    __tablename__ = "sample_types"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(80), unique=True)
+    code: Mapped[str] = mapped_column(String(16), unique=True)
+    category: Mapped[str] = mapped_column(String(32))
+    description: Mapped[str | None] = mapped_column(Text)
+    id_format: Mapped[str | None] = mapped_column(String(80))
+    id_reset: Mapped[str | None] = mapped_column(String(16))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+
+
+class StorageLocation(Base):
+    """A place samples are kept. Locations nest: Lab 1 > Fridge A > Shelf 2."""
+
+    __tablename__ = "storage_locations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(80))
+    kind: Mapped[str] = mapped_column(String(32))
+    parent_id: Mapped[int | None] = mapped_column(ForeignKey("storage_locations.id"))
+    condition: Mapped[str | None] = mapped_column(String(80))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+
+
+class Sample(Base):
+    """A physical sample (or aliquot) tracked from registration to disposal."""
+
+    __tablename__ = "samples"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sample_id: Mapped[str] = mapped_column(String(64), unique=True)
+    sample_type_id: Mapped[int] = mapped_column(ForeignKey("sample_types.id"))
+    parent_id: Mapped[int | None] = mapped_column(ForeignKey("samples.id"), index=True)
+    status: Mapped[str] = mapped_column(String(32), index=True)
+
+    material_name: Mapped[str | None] = mapped_column(String(200))
+    lot_number: Mapped[str | None] = mapped_column(String(100))
+    supplier: Mapped[str | None] = mapped_column(String(200))
+    sampling_point: Mapped[str | None] = mapped_column(String(200))
+    stability_study: Mapped[str | None] = mapped_column(String(100))
+    stability_timepoint: Mapped[str | None] = mapped_column(String(50))
+    stability_condition: Mapped[str | None] = mapped_column(String(100))
+    # Quantity is kept exactly as entered (text) so the original value is preserved.
+    quantity: Mapped[str | None] = mapped_column(String(32))
+    quantity_unit: Mapped[str | None] = mapped_column(String(16))
+    container: Mapped[str | None] = mapped_column(String(100))
+    priority: Mapped[str] = mapped_column(String(16), default="Normal")
+    due_date: Mapped[date | None]
+    sampled_at: Mapped[datetime | None]
+    sampled_by: Mapped[str | None] = mapped_column(String(128))
+    notes: Mapped[str | None] = mapped_column(Text)
+
+    received_at: Mapped[datetime | None]
+    received_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    receipt_condition: Mapped[str | None] = mapped_column(String(64))
+    receipt_temperature: Mapped[str | None] = mapped_column(String(32))
+
+    location_id: Mapped[int | None] = mapped_column(ForeignKey("storage_locations.id"), index=True)
+    holder_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+
+    disposed_at: Mapped[datetime | None]
+    disposed_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    disposal_method: Mapped[str | None] = mapped_column(String(64))
+
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    updated_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class CustodyEvent(Base):
+    """One step in a sample's chain of custody. Immutable (enforced by triggers).
+
+    ``occurred_at`` is when it physically happened (entered by the user);
+    ``recorded_at`` is when it was entered into the system."""
+
+    __tablename__ = "custody_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sample_id: Mapped[int] = mapped_column(ForeignKey("samples.id"), index=True)
+    event: Mapped[str] = mapped_column(String(32))
+    occurred_at: Mapped[datetime]
+    recorded_at: Mapped[datetime] = mapped_column(default=utcnow)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    username: Mapped[str] = mapped_column(String(64))
+    from_location_id: Mapped[int | None] = mapped_column(ForeignKey("storage_locations.id"))
+    to_location_id: Mapped[int | None] = mapped_column(ForeignKey("storage_locations.id"))
+    from_holder_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    to_holder_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    details: Mapped[str | None] = mapped_column(Text)
+    notes: Mapped[str | None] = mapped_column(Text)
+
+
+class IdCounter(Base):
+    """Running numbers for generated IDs, per counter scope and reset period."""
+
+    __tablename__ = "id_counters"
+
+    scope: Mapped[str] = mapped_column(String(64), primary_key=True)
+    period: Mapped[str] = mapped_column(String(16), primary_key=True)
+    last_value: Mapped[int] = mapped_column(Integer, default=0)

@@ -34,9 +34,9 @@ ROLE_LABELS = {
 }
 
 ROLE_DESCRIPTIONS = {
-    Role.ADMINISTRATOR: "Manages user accounts and system settings; can view the audit trail.",
-    Role.QA_REVIEWER: "Reviews and approves laboratory records; can view and export the audit trail.",
-    Role.ANALYST: "Creates and edits laboratory records and signs their own work.",
+    Role.ADMINISTRATOR: "Manages user accounts, system settings, sample types and storage; can view the audit trail.",
+    Role.QA_REVIEWER: "Reviews and approves laboratory records, manages sample types and storage; can view the audit trail.",
+    Role.ANALYST: "Registers, receives and handles samples, and signs their own work.",
     Role.VIEWER: "Read-only access to laboratory records.",
 }
 
@@ -50,6 +50,8 @@ class Permission(StrEnum):
     APPROVE_RECORDS = "approve_records"
     MANAGE_USERS = "manage_users"
     MANAGE_SETTINGS = "manage_settings"
+    # Sample types, storage locations and the sample ID format.
+    MANAGE_MASTER_DATA = "manage_master_data"
     VIEW_AUDIT_TRAIL = "view_audit_trail"
     EXPORT_AUDIT_TRAIL = "export_audit_trail"
 
@@ -60,6 +62,7 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.VIEW_RECORDS,
             Permission.MANAGE_USERS,
             Permission.MANAGE_SETTINGS,
+            Permission.MANAGE_MASTER_DATA,
             Permission.VIEW_AUDIT_TRAIL,
             Permission.EXPORT_AUDIT_TRAIL,
         }
@@ -70,6 +73,7 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.SIGN_RECORDS,
             Permission.REVIEW_RECORDS,
             Permission.APPROVE_RECORDS,
+            Permission.MANAGE_MASTER_DATA,
             Permission.VIEW_AUDIT_TRAIL,
             Permission.EXPORT_AUDIT_TRAIL,
         }
