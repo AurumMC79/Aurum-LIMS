@@ -158,6 +158,17 @@ QPushButton[danger="true"] {
 }
 
 /* ---------- Tables ---------- */
+QTreeWidget {
+    background: #ffffff;
+    border: 1px solid #e3e6ea;
+    border-radius: 6px;
+    alternate-background-color: #fafbfc;
+    selection-background-color: #f3e7c0;
+    selection-color: #1f2933;
+}
+QTreeWidget::item {
+    padding: 4px 2px;
+}
 QTableWidget, QTableView {
     background: #ffffff;
     border: 1px solid #e3e6ea;

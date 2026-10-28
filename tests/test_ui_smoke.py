@@ -1,14 +1,18 @@
 """Smoke tests that build the real screens (offscreen) and click through them."""
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QDialog
+from PySide6.QtWidgets import QDialog, QLabel
 
 from aurum_lims.security.roles import Role
-from aurum_lims.services import auth
+from aurum_lims.services import auth, sample_types, storage
 from aurum_lims.ui.first_run_dialog import FirstRunDialog
 from aurum_lims.ui.lock_screen import LockDialog
 from aurum_lims.ui.login_dialog import LoginDialog
 from aurum_lims.ui.main_window import MainWindow
+from aurum_lims.ui.sample_dialogs import RegisterSampleDialog, SampleDetailDialog
+from aurum_lims.ui.views.sample_types import SampleTypesView
+from aurum_lims.ui.views.samples import SamplesView
+from aurum_lims.ui.views.storage import StorageView
 from tests.conftest import ADMIN_PASSWORD, USER_PASSWORD
 
 
@@ -45,7 +49,8 @@ def test_admin_main_window_has_admin_pages(qtbot, db, admin):
     window = MainWindow(db, admin)
     qtbot.addWidget(window)
     titles = [p.title for p in window.pages]
-    assert {"Dashboard", "Users", "Audit Trail", "Settings", "My Account"} <= set(titles)
+    assert {"Dashboard", "Samples", "Storage", "Sample Types", "Users", "Audit Trail", "Settings",
+            "My Account"} <= set(titles)
     for title in titles:
         assert window.show_page(title)  # each page builds and refreshes without error
     window.sign_out("test")
@@ -59,7 +64,61 @@ def test_analyst_main_window_hides_admin_pages(qtbot, db, make_user):
     assert "Users" not in titles
     assert "Audit Trail" not in titles
     assert "Settings" not in titles
+    assert "Sample Types" not in titles
+    assert {"Samples", "Storage"} <= titles
     window.sign_out("test")
+
+
+def test_register_dialog_and_sample_screens(qtbot, db, admin, make_user, monkeypatch):
+    with db.session() as s:
+        sample_types.seed_defaults(s)
+        fridge = storage.create_location(s, admin, name="Fridge 1", kind="Refrigerator").id
+    analyst = make_user("jsmith", Role.ANALYST)
+
+    dialog = RegisterSampleDialog(db, analyst)
+    qtbot.addWidget(dialog)
+    rm_index = next(i for i, t in enumerate(dialog.types) if t[2] == "RM")
+    dialog.type_combo.setCurrentIndex(rm_index)
+    assert dialog.next_id.text().startswith("AU-")
+    dialog.fields.category_edits["material_name"].setText("Citric acid")
+    dialog.fields.category_edits["lot_number"].setText("CA-778")
+    dialog.count.setValue(2)
+    dialog.receipt.location.setCurrentIndex(dialog.receipt.location.findData(fridge))
+    dialog._submit()
+    assert dialog.result() == QDialog.Accepted, dialog.error.text()
+    assert len(dialog.created) == 2
+
+    view = SamplesView(db, analyst)
+    qtbot.addWidget(view)
+    view.refresh()
+    assert view.table.rowCount() == 2
+    view.table.selectRow(0)
+    assert view.transfer_button.isEnabled() and not view.receive_button.isEnabled()
+
+    detail = SampleDetailDialog(db, analyst, view.rows[0].id)
+    qtbot.addWidget(detail)
+    label_texts = [label.text() for label in detail.findChildren(QLabel)]
+    assert "Citric acid" in label_texts
+    assert any("Fridge 1" in text for text in label_texts)
+
+    storage_view = StorageView(db, analyst)
+    qtbot.addWidget(storage_view)
+    storage_view.refresh()
+    assert storage_view.tree.topLevelItemCount() == 1
+    assert storage_view.add_button.isHidden()  # analysts cannot change storage
+
+
+def test_sample_types_view_format_preview(qtbot, db, admin):
+    with db.session() as s:
+        sample_types.seed_defaults(s)
+    view = SampleTypesView(db, admin)
+    qtbot.addWidget(view)
+    view.refresh()
+    assert view.table.rowCount() == 7
+    view.lab_format.pattern.setText("{TYPE}-{YY}-{SEQ:3}")
+    assert "RM-" in view.lab_format.preview.text()
+    view.lab_format.pattern.setText("NO-SEQUENCE")
+    assert "exactly once" in view.lab_format.preview.text()
 
 
 def test_lock_dialog_unlocks_with_password(qtbot, db, make_user):

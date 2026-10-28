@@ -3,16 +3,27 @@
 A Laboratory Information Management System for QC and regulated laboratories
 (GMP, ISO/IEC 17025), built as a Windows desktop application.
 
-**Status:** Phase 1 (foundation) is complete. This covers secure sign-in, user
-roles, the audit trail and electronic signatures. Samples, tests and results
-come next. See [docs/ROADMAP.md](docs/ROADMAP.md).
+**Status:** Phases 1 (foundation) and 2 (samples and chain of custody) are
+complete. Test methods, specifications and results come next. See
+[docs/ROADMAP.md](docs/ROADMAP.md).
 
-## Features (Phase 1)
+## Samples and chain of custody (Phase 2)
+
+| Area | What it does |
+|---|---|
+| Sample types | Raw Material, In-Process, Finished Product, Stability, Environmental Monitoring, Water and Other are created on first start-up. Administrators and QA Reviewers can add more on the **Sample Types** page. Each type's category decides which fields the registration form asks for: for example lot and supplier for raw materials, or study and time point for stability. |
+| Sample IDs | You set the format yourself from fixed text and tokens: `{SEQ:5}` (running number), `{YYYY}` `{YY}` `{MM}` `{DD}` and `{TYPE}` (type code). The running number restarts every year, month or day, or never. There is one lab-wide format, and any sample type can have its own. The editor shows example IDs as you type and explains mistakes. Default format: `AU-{YYYY}-{SEQ:5}`. |
+| Registration | Register one sample or a batch (for example every container of a lot). The samples can also be received into storage in the same step. |
+| Storage | A tree of locations (QC Lab › Fridge 1 › Shelf A) with storage conditions. The **Storage** page shows what is in each location. |
+| Chain of custody | Receipt (time, condition, temperature), transfers to a location or to a person, aliquots (`<ID>-A1`, `-A2`, …), disposal and cancellation. Each step records when it happened and when it was entered, and can never be edited. Disposal requires an electronic signature. |
+| Corrections | Sample details can be corrected with a reason. The old and new values go into the audit trail. Samples are never deleted. |
+
+## Foundation (Phase 1)
 
 | Area | What it does |
 |---|---|
 | Accounts | One account per person. First launch creates the Administrator. Accounts are deactivated, never deleted, so every record stays attributable. |
-| Roles | **Administrator** (users and settings), **QA Reviewer** (review/approve), **Analyst** (create/edit records), **Viewer** (read-only). Administrators do not approve data (segregation of duties). |
+| Roles | **Administrator** (users, settings, sample types and storage), **QA Reviewer** (review/approve, sample types and storage), **Analyst** (registers and handles samples), **Viewer** (read-only). Administrators do not approve data (segregation of duties). |
 | Passwords | Argon2id hashing. Minimum length with a letter and a number. Expiry (default 90 days). Recent passwords cannot be re-used. Temporary passwords must be changed at first sign-in. |
 | Lockout | 5 wrong passwords lock the account until an Administrator unlocks it. |
 | Inactivity | The screen locks after 15 minutes without input and needs the same user's password to continue. A **Lock** button locks it immediately. |

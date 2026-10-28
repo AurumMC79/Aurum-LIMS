@@ -289,7 +289,7 @@ def register_samples(
         session.add(sample)
         session.flush()
         _custody(session, sample, actor, CustodyEventType.REGISTERED,
-                 details={"batch": f"{index + 1} of {count}"} if count > 1 else None)
+                 details={"registered together": f"{index + 1} of {count}"} if count > 1 else None)
         _audit(session, AuditAction.SAMPLE_REGISTERED, actor, sample,
                new={"sample_type": sample_type.name, **_snapshot(sample)})
         if receipt is not None:

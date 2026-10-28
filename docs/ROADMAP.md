@@ -11,13 +11,15 @@ Phase 1: user accounts, roles, the audit trail and electronic signatures.
 - Electronic signature service (password re-entry and signature meaning)
 - Admin pages for users and security settings
 
-## Phase 2: Samples and chain of custody
-- Sample types, sample points/sources, customers or projects
-- Sample registration with automatic unique IDs (configurable format, e.g. `AU-2026-00001`)
-- Barcode/label printing (Code 128 / QR)
-- Storage locations (building → room → fridge/freezer → shelf → box/position)
-- Chain of custody: receipt (condition, temperature), transfers, aliquots/sub-samples, disposal
-- Sample status lifecycle: Registered → Received → In Testing → Testing Complete → Reviewed → Approved → Disposed
+## Phase 2: Samples and chain of custody ✅
+- Sample types in categories (raw material, product, stability, environmental, other) that decide the form fields
+- Custom sample ID formats built from tokens, lab-wide or per sample type, with yearly/monthly/daily restarts
+- Sample registration (single or batch), with optional receipt into storage straight away
+- Nested storage locations with storage conditions
+- Chain of custody: receipt (condition, temperature), transfers to locations or people, aliquots, disposal
+  with electronic signature, cancellation, audited corrections
+- Dashboard counts: awaiting receipt, in the lab, overdue
+- Not yet: barcode/label printing (deferred at the lab's request)
 
 ## Phase 3: Methods, specifications and results
 - Test methods / SOP references with versioning

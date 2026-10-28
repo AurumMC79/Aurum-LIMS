@@ -190,6 +190,19 @@ def effective_format(session: Session, sample_type: SampleType) -> tuple[IdForma
     return fmt, scope
 
 
+def peek_next_id(session: Session, sample_type: SampleType, when: date | None = None) -> str:
+    """The ID the next registration would get, without reserving it."""
+    when = when or datetime.now().astimezone().date()
+    fmt, scope = effective_format(session, sample_type)
+    counter = session.get(IdCounter, (scope, period_key(fmt.reset, when)))
+    value = counter.last_value if counter else 0
+    while True:
+        value += 1
+        candidate = render(fmt.pattern, value, when, sample_type.code)
+        if session.scalar(select(Sample.id).where(Sample.sample_id == candidate)) is None:
+            return candidate
+
+
 def next_sample_id(session: Session, sample_type: SampleType, when: date | None = None) -> str:
     """Reserve and return the next sample ID for ``sample_type``.
 

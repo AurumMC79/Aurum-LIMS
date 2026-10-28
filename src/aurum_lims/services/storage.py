@@ -65,6 +65,13 @@ def paths(session: Session) -> dict[int, str]:
     return result
 
 
+def active_choices(session: Session) -> list[tuple[int, str]]:
+    """(id, full path) of every active location, sorted by path, for pickers."""
+    all_paths = paths(session)
+    active = session.scalars(select(StorageLocation.id).where(StorageLocation.is_active.is_(True)))
+    return sorted(((i, all_paths[i]) for i in active), key=lambda item: item[1].lower())
+
+
 def sample_counts(session: Session) -> dict[int, int]:
     """Number of samples currently stored directly in each location."""
     rows = session.execute(

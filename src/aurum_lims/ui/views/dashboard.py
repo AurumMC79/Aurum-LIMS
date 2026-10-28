@@ -10,7 +10,8 @@ from aurum_lims.db import Database
 from aurum_lims.db.models import User
 from aurum_lims.security.identity import SessionUser
 from aurum_lims.security.roles import ROLE_DESCRIPTIONS, Permission
-from aurum_lims.services import auth, users
+from aurum_lims.services import auth, samples, users
+from aurum_lims.services.samples import ON_HAND_STATUSES, SampleStatus
 from aurum_lims.ui.common import Card, format_local, muted_label
 
 
@@ -64,12 +65,27 @@ class DashboardView(QWidget):
             self.users_card.body.addWidget(self.users_detail)
             self.grid.addWidget(self.users_card, 0, 2)
 
+        self.sample_cards = {}
+        for column, (key, title, help_text) in enumerate([
+            ("awaiting", "Awaiting receipt", "Registered but not yet received"),
+            ("on_hand", "Samples in the lab", "Received and not yet disposed"),
+            ("due", "Overdue", "Open samples past their due date"),
+        ]):
+            card = Card(title)
+            value = QLabel("0")
+            value.setObjectName("CardValue")
+            detail = muted_label(help_text)
+            card.body.addWidget(value)
+            card.body.addWidget(detail)
+            self.sample_cards[key] = (value, detail)
+            self.grid.addWidget(card, 1, column)
+
         roadmap = Card("Coming next")
         roadmap.body.addWidget(
             muted_label(
-                "Phase 2 adds sample registration and chain of custody. Later phases add test methods "
-                "and specifications, result entry with out-of-specification flags, review and approval "
-                "with electronic signatures, Certificates of Analysis, and instrument and reagent tracking."
+                "Phase 3 adds test methods and specifications, and result entry with out-of-specification "
+                "flags. Later phases add review and approval with electronic signatures, Certificates of "
+                "Analysis, and instrument and reagent tracking."
             )
         )
         layout.addWidget(roadmap)
@@ -82,6 +98,12 @@ class DashboardView(QWidget):
             expires = auth.password_expires_in_days(session, self.user.id)
             last_login = me.last_login_at
             counts = users.count_users(session) if self.users_card else None
+            statuses = samples.status_counts(session)
+            overdue, due_soon = samples.due_counts(session)
+        self.sample_cards["awaiting"][0].setText(str(statuses.get(SampleStatus.REGISTERED, 0)))
+        self.sample_cards["on_hand"][0].setText(str(sum(statuses.get(s, 0) for s in ON_HAND_STATUSES)))
+        self.sample_cards["due"][0].setText(str(overdue))
+        self.sample_cards["due"][1].setText(f"Open samples past their due date · {due_soon} due in the next 7 days")
         expiry = "Your password does not expire." if expires is None else f"Password expires in {expires} day(s)."
         self.account_info.setText(f"Username: {self.user.username}\nSigned in: {format_local(last_login)}\n{expiry}")
         if counts is not None:

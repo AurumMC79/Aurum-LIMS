@@ -5,9 +5,11 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QRectF, Qt
+from PySide6.QtCore import QDateTime, QRectF, Qt
 from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
+    QComboBox,
+    QDateTimeEdit,
     QFrame,
     QInputDialog,
     QLabel,
@@ -126,6 +128,29 @@ def ask_reason(parent: QWidget, title: str, prompt: str) -> str | None:
 def show_error(parent: QWidget, error: Exception | str, title: str = "Not allowed") -> None:
     message = str(error) if isinstance(error, (AurumError, str)) else f"Unexpected error: {error}"
     QMessageBox.warning(parent, title, message)
+
+
+def now_edit() -> QDateTimeEdit:
+    """Date/time picker defaulting to now, in local time."""
+    edit = QDateTimeEdit(QDateTime.currentDateTime())
+    edit.setCalendarPopup(True)
+    edit.setDisplayFormat("yyyy-MM-dd HH:mm")
+    edit.setMaximumDateTime(QDateTime.currentDateTime().addDays(1))
+    return edit
+
+
+def edit_to_utc(edit: QDateTimeEdit) -> datetime:
+    """The picked local date/time as a timezone-aware value."""
+    return edit.dateTime().toPython().astimezone()
+
+
+def fill_location_combo(combo: QComboBox, location_paths: list[tuple[int, str]], selected: int | None = None) -> None:
+    combo.clear()
+    combo.addItem("— choose a location —", None)
+    for location_id, path in location_paths:
+        combo.addItem(path, location_id)
+        if location_id == selected:
+            combo.setCurrentIndex(combo.count() - 1)
 
 
 def format_local(moment: datetime | str | None, with_seconds: bool = False) -> str:

@@ -29,8 +29,11 @@ from aurum_lims.ui.common import app_icon, logo_pixmap
 from aurum_lims.ui.lock_screen import IdleWatcher, LockDialog
 from aurum_lims.ui.views.account import AccountView
 from aurum_lims.ui.views.audit import AuditView
-from aurum_lims.ui.views.dashboard import DashboardView, PlaceholderView
+from aurum_lims.ui.views.dashboard import DashboardView
+from aurum_lims.ui.views.sample_types import SampleTypesView
+from aurum_lims.ui.views.samples import SamplesView
 from aurum_lims.ui.views.settings import SettingsView
+from aurum_lims.ui.views.storage import StorageView
 from aurum_lims.ui.views.users import UsersView
 
 
@@ -55,13 +58,10 @@ class MainWindow(QMainWindow):
         self.nav.setFocusPolicy(Qt.NoFocus)
 
         self._add_page(DashboardView(db, user))
-        self._add_page(
-            PlaceholderView(
-                "Samples",
-                "Sample registration, unique sample IDs and barcodes, storage locations and full chain of "
-                "custody (receipt → transfer → disposal) arrive in Phase 2.",
-            )
-        )
+        self._add_page(SamplesView(db, user))
+        self._add_page(StorageView(db, user))
+        if user.can(Permission.MANAGE_MASTER_DATA):
+            self._add_page(SampleTypesView(db, user))
         if user.can(Permission.MANAGE_USERS):
             self._add_page(UsersView(db, user))
         if user.can(Permission.VIEW_AUDIT_TRAIL):
