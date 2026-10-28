@@ -97,6 +97,9 @@ class TestingView(QWidget):
                 item = QTableWidgetItem(value)
                 if (c == 5 and row.priority == "Urgent") or (c == 6 and row.due_date and row.due_date < today):
                     item.setForeground(QColor("#b42318"))
+                if c == 3 and row.status == AnalysisStatus.RETURNED:
+                    item.setForeground(QColor("#b54708"))
+                    item.setToolTip("Returned by the reviewer for correction")
                 self.table.setItem(r, c, item)
         self.count.setText(f"{len(self.rows)} test(s)")
         self._update_buttons()

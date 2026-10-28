@@ -3,9 +3,19 @@
 A Laboratory Information Management System for QC and regulated laboratories
 (GMP, ISO/IEC 17025), built as a Windows desktop application.
 
-**Status:** Phases 1 (foundation), 2 (samples and chain of custody) and 3
-(methods, specifications, results and OOS) are complete. Review/approval and
-Certificates of Analysis come next. See [docs/ROADMAP.md](docs/ROADMAP.md).
+**Status:** Phases 1–4 are complete: foundation; samples and chain of custody;
+methods, specifications, results and OOS; and review, approval and certificates.
+Instruments and inventory come next. See [docs/ROADMAP.md](docs/ROADMAP.md).
+
+## Review, approval and certificates (Phase 4)
+
+| Area | What it does |
+|---|---|
+| Test review | Every signed test goes to the **Review** page. A QA Reviewer checks the raw values and calculations, then either **accepts** it with an electronic signature ("Reviewed by") or **returns** it to the analyst with a comment. Nobody who entered or signed values on a test can review it. |
+| Corrections | The analyst sees returned tests on the Testing page with the reviewer's comment. Corrections need a reason. Signing again creates a new **revision** of the results; earlier revisions stay on record. |
+| Sample decision | Once every test is reviewed, QA **approves** or **rejects** the sample with an electronic signature. Open OOS investigations block the decision. A sample with non-conforming results cannot be approved. Rejecting needs a comment. Decided samples are locked. |
+| Certificates | Approval issues a **Certificate of Analysis** (`CoA-YYYY-NNNN`); rejection issues a **Test Report** (`TR-YYYY-NNNN`). The PDF shows lab details, sample information, results against specification, the conclusion, and every Performed / Reviewed / Approved signature. It is stored exactly as issued with a SHA-256 fingerprint; reprints are identical, and the fingerprint is checked every time. |
+| Lab details | Administrators set the laboratory name, address, contact line, certificate statement and paper size (Letter/A4) on the **Settings** page. |
 
 ## Methods, specifications and results (Phase 3)
 

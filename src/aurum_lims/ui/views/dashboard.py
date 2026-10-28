@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from PySide6.QtWidgets import QGridLayout, QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QGridLayout, QLabel, QScrollArea, QVBoxLayout, QWidget
 
 from aurum_lims.db import Database
 from aurum_lims.db.models import User
 from aurum_lims.security.identity import SessionUser
 from aurum_lims.security.roles import ROLE_DESCRIPTIONS, Permission
-from aurum_lims.services import auth, oos, samples, testing, users
+from aurum_lims.services import auth, oos, review, samples, testing, users
 from aurum_lims.services.samples import ON_HAND_STATUSES, SampleStatus
 from aurum_lims.services.testing import AnalysisStatus
 from aurum_lims.ui.common import Card, format_local, muted_label
@@ -32,7 +32,16 @@ class DashboardView(QWidget):
         super().__init__(parent)
         self.db = db
         self.user = user
-        layout = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.NoFrame)
+        content = QWidget()
+        content.setObjectName("Content")
+        scroll.setWidget(content)
+        outer.addWidget(scroll)
+        layout = QVBoxLayout(content)
         layout.setContentsMargins(24, 20, 24, 20)
         layout.setSpacing(16)
 
@@ -92,12 +101,25 @@ class DashboardView(QWidget):
             card.body.addWidget(muted_label(help_text))
             self.sample_cards[key] = (value, None)
             self.grid.addWidget(card, 2, column)
+        self.reviewer = user.can(Permission.REVIEW_RECORDS)
+        if self.reviewer:
+            for column, (key, title, help_text) in enumerate([
+                ("to_review", "Tests awaiting review", "Signed by the analyst, waiting for second-person review"),
+                ("to_decide", "Samples awaiting decision", "All tests reviewed; ready to approve or reject"),
+            ]):
+                card = Card(title)
+                value = QLabel("0")
+                value.setObjectName("CardValue")
+                card.body.addWidget(value)
+                card.body.addWidget(muted_label(help_text))
+                self.sample_cards[key] = (value, None)
+                self.grid.addWidget(card, 3, column)
 
         roadmap = Card("Coming next")
         roadmap.body.addWidget(
             muted_label(
-                "Phase 4 adds second-person review and approval of results with electronic signatures, and "
-                "Certificates of Analysis. Phase 5 adds instruments, calibration and reagent tracking."
+                "Phase 5 adds instruments with calibration and maintenance schedules, and reagent and reference "
+                "standard lots with expiry dates, linked to the tests they were used in."
             )
         )
         layout.addWidget(roadmap)
@@ -114,6 +136,10 @@ class DashboardView(QWidget):
             overdue, due_soon = samples.due_counts(session)
             tests = testing.open_counts(session)
             open_oos = oos.open_count(session)
+            if self.reviewer:
+                self.sample_cards["to_review"][0].setText(str(len(review.tests_awaiting_review(session, self.user))))
+                self.sample_cards["to_decide"][0].setText(
+                    str(len(review.samples_awaiting_decision(session, self.user))))
         self.sample_cards["pending"][0].setText(str(tests.get(AnalysisStatus.PENDING, 0)))
         self.sample_cards["in_progress"][0].setText(str(tests.get(AnalysisStatus.IN_PROGRESS, 0)))
         self.sample_cards["oos"][0].setText(str(open_oos))

@@ -153,6 +153,21 @@ def fill_location_combo(combo: QComboBox, location_paths: list[tuple[int, str]],
             combo.setCurrentIndex(combo.count() - 1)
 
 
+def open_pdf(name: str, data: bytes) -> Path:
+    """Write a PDF to a temporary folder and open it in the default PDF viewer."""
+    import tempfile
+
+    from PySide6.QtCore import QUrl
+    from PySide6.QtGui import QDesktopServices
+
+    folder = Path(tempfile.gettempdir()) / "AurumLIMS"
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f"{name}.pdf"
+    path.write_bytes(data)
+    QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+    return path
+
+
 def format_local(moment: datetime | str | None, with_seconds: bool = False) -> str:
     """Show a stored UTC time in the computer's local time zone."""
     if moment is None:

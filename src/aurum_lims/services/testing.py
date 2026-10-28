@@ -21,7 +21,7 @@ from decimal import Decimal
 from enum import StrEnum
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from aurum_lims.db.models import (
     Analysis,
@@ -523,24 +523,28 @@ class AnalysisRow:
     priority: str
     due_date: date | None
     sample_status: str
+    completed_by: str | None = None
 
 
 def _rows(session: Session, stmt) -> list[AnalysisRow]:
     rows = []
-    for a, m, s, assignee in session.execute(stmt):
+    for a, m, s, assignee, signer in session.execute(stmt):
         rows.append(AnalysisRow(
             a.id, s.id, s.sample_id, s.material_name or s.sampling_point, m.code, m.name, m.version, a.status,
-            assignee, a.created_at, a.completed_at, s.priority, s.due_date, s.status,
+            assignee, a.created_at, a.completed_at, s.priority, s.due_date, s.status, signer,
         ))
     return rows
 
 
 def _base():
+    assignee = aliased(User)
+    signer = aliased(User)
     return (
-        select(Analysis, TestMethod, Sample, User.full_name)
+        select(Analysis, TestMethod, Sample, assignee.full_name, signer.full_name)
         .join(TestMethod, Analysis.method_id == TestMethod.id)
         .join(Sample, Analysis.sample_id == Sample.id)
-        .outerjoin(User, Analysis.assigned_to_id == User.id)
+        .outerjoin(assignee, Analysis.assigned_to_id == assignee.id)
+        .outerjoin(signer, Analysis.completed_by_id == signer.id)
     )
 
 

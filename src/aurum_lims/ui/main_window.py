@@ -29,7 +29,9 @@ from aurum_lims.ui.common import app_icon, logo_pixmap
 from aurum_lims.ui.lock_screen import IdleWatcher, LockDialog
 from aurum_lims.ui.views.account import AccountView
 from aurum_lims.ui.views.audit import AuditView
+from aurum_lims.ui.views.certificates import CertificatesView
 from aurum_lims.ui.views.dashboard import DashboardView
+from aurum_lims.ui.views.review import ReviewView
 from aurum_lims.ui.views.methods import MethodsView
 from aurum_lims.ui.views.oos import OOSView
 from aurum_lims.ui.views.specifications import SpecificationsView
@@ -64,7 +66,10 @@ class MainWindow(QMainWindow):
         self._add_page(DashboardView(db, user))
         self._add_page(SamplesView(db, user))
         self._add_page(TestingView(db, user))
+        if user.can(Permission.REVIEW_RECORDS):
+            self._add_page(ReviewView(db, user))
         self._add_page(OOSView(db, user))
+        self._add_page(CertificatesView(db, user))
         self._add_page(StorageView(db, user))
         if user.can(Permission.MANAGE_MASTER_DATA):
             self._add_page(MethodsView(db, user))

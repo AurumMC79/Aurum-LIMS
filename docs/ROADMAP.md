@@ -33,11 +33,16 @@ Phase 1: user accounts, roles, the audit trail and electronic signatures.
 - OOS investigation log, closed by QA with a conclusion and e-signature
 - Not yet: LOD/LOQ handling ("< LOQ" results), system suitability criteria, instrument file import
 
-## Phase 4: Review, approval and reporting
-- Review/approval workflow using electronic signatures (Performed by → Reviewed by → Approved by)
-- Second-person review rules (the reviewer cannot be the analyst)
-- Certificates of Analysis (PDF) with signature manifestation
-- Record locking after approval; controlled amendments with reason for change
+## Phase 4: Review, approval and reporting ✅
+- Second-person test review by QA (accept with e-signature, or return with a comment); reviewers can never
+  review a test they entered or signed values on
+- Returned tests corrected with reasons and re-signed as a new revision; earlier revisions retained
+- QA sample decision (Approved / Rejected) with e-signature; open OOS blocks the decision; non-conforming samples
+  cannot be approved
+- Certificate of Analysis / Test Report PDFs with full signature manifestation, stored as issued with SHA-256
+  fingerprint verification
+- Laboratory details for the certificate header; decided samples locked
+- Not yet: amended certificates (re-issue after a post-approval correction), bulk/batch release
 
 ## Phase 5: Instruments and inventory
 - Instrument register, calibration and maintenance schedules with due-date warnings

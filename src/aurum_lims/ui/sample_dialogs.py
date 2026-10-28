@@ -36,7 +36,7 @@ from PySide6.QtGui import QColor
 from aurum_lims.db.models import Sample, SampleType, Specification, User
 from aurum_lims.errors import AurumError
 from aurum_lims.security.identity import SessionUser
-from aurum_lims.services import esign, sample_ids, samples, sample_types, storage, testing
+from aurum_lims.services import certificates, esign, review, sample_ids, samples, sample_types, storage, testing
 from aurum_lims.services.sample_types import CATEGORY_FIELDS, FIELD_LABELS, Category
 from aurum_lims.services.samples import (
     DISPOSAL_METHODS,
@@ -54,6 +54,7 @@ from aurum_lims.ui.common import (
     format_local,
     muted_label,
     now_edit,
+    open_pdf,
     password_field,
     show_label_message,
 )
@@ -552,6 +553,11 @@ class SampleDetailDialog(QDialog):
             tests = [
                 (a, testing.reportable_results(session, a.id)) for a in testing.analyses_for_sample(session, user, sample.id)
             ]
+            decision = review.decision_for(session, sample.id)
+            decision_text = (f"{decision.decision} by {names.get(decision.decided_by_id, '?')} on "
+                             f"{format_local(decision.decided_at)}" + (f" — {decision.comment}" if decision.comment else "")
+                             if decision else None)
+            self.certificates = certificates.list_certificates(session, user, sample.id)
         self.setWindowTitle(f"Sample {sample.sample_id}")
 
         def where(location_id, holder_id):
@@ -584,6 +590,8 @@ class SampleDetailDialog(QDialog):
             ("Aliquot of", parent_id),
             ("Aliquots", ", ".join(children) or None),
             ("Specification", spec_label),
+            ("Decision", decision_text),
+            ("Certificate", ", ".join(f"{c.number} ({c.kind})" for c in self.certificates) or None),
             ("Notes", sample.notes),
         ]
         rows = [(label, value) for label, value in rows if value]
@@ -665,7 +673,20 @@ class SampleDetailDialog(QDialog):
 
         close = QDialogButtonBox(QDialogButtonBox.Close)
         close.rejected.connect(self.reject)
+        if self.certificates:
+            latest = self.certificates[0]
+            open_button = close.addButton(f"Open {latest.number}", QDialogButtonBox.ActionRole)
+            open_button.clicked.connect(lambda *_: self._open_certificate(db, user, latest.id))
         layout.addWidget(close)
+
+    def _open_certificate(self, db: Database, user: SessionUser, certificate_id: int) -> None:
+        try:
+            with db.session() as session:
+                number, pdf = certificates.get_pdf(session, user, certificate_id)
+        except AurumError as exc:
+            QMessageBox.warning(self, "Certificate problem", str(exc))
+            return
+        open_pdf(number, pdf)
 
 
 def show_created(parent: QWidget, title: str, ids: list[str]) -> None:

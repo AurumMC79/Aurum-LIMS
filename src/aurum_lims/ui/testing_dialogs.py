@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -33,7 +34,7 @@ from aurum_lims.db.models import Analysis, Sample, Specification, TestMethod, Us
 from aurum_lims.errors import AurumError
 from aurum_lims.security.identity import SessionUser
 from aurum_lims.security.roles import Permission, has_permission
-from aurum_lims.services import formulas, methods, specifications, testing
+from aurum_lims.services import formulas, methods, review, specifications, testing
 from aurum_lims.services.esign import SignatureMeaning
 from aurum_lims.services.formulas import Conformance
 from aurum_lims.services.methods import ResultType, to_spec
@@ -156,9 +157,10 @@ class ResultEntryDialog(QDialog):
 
     SUMMARY_COLUMNS = ["Result", "Replicates", "Mean", "%RSD", "Reported", "Specification", "Conformance"]
 
-    def __init__(self, db: Database, user: SessionUser, analysis_id: int, parent=None):
+    def __init__(self, db: Database, user: SessionUser, analysis_id: int, parent=None, review_mode: bool = False):
         super().__init__(parent)
         self.db, self.user, self.analysis_id = db, user, analysis_id
+        self.review_mode = review_mode
         self.resize(980, 720)
         self._load()
 
@@ -175,12 +177,18 @@ class ResultEntryDialog(QDialog):
             self.status = analysis.status
             self.frozen = testing.reportable_results(session, analysis.id)
             completed_by = session.get(User, analysis.completed_by_id).full_name if analysis.completed_by_id else None
+            reviewer = session.get(User, analysis.reviewed_by_id).full_name if analysis.reviewed_by_id else None
             self.header = (f"{sample.sample_id} · {sample.material_name or sample.sampling_point or ''} · "
                            f"{method.code} v{method.version} – {method.name}")
             self.subheader = (f"Specification: {spec.code} v{spec.version}" if spec else "No specification") + \
                 f" · Status: {analysis.status}" + \
+                (f" (revision {analysis.revision})" if analysis.revision > 1 else "") + \
                 (f" · Signed by {completed_by} on {format_local(analysis.completed_at)}" if completed_by else "") + \
+                (f" · Reviewed by {reviewer} on {format_local(analysis.reviewed_at)}"
+                 if reviewer and analysis.status == AnalysisStatus.REVIEWED else "") + \
                 (f" · SOP {method.sop_reference}" if method.sop_reference else "")
+            self.return_note = (f"Returned for correction by {reviewer}: {analysis.review_comment}"
+                                if analysis.status == AnalysisStatus.RETURNED else "")
             self.sample_id = sample.sample_id
             self.method_label = f"{method.code} v{method.version}"
         self.editable = self.status in OPEN_ANALYSIS and self.user.can(Permission.EDIT_RECORDS)
@@ -195,6 +203,11 @@ class ResultEntryDialog(QDialog):
         title.setObjectName("CardTitle")
         layout.addWidget(title)
         layout.addWidget(muted_label(self.subheader))
+        if self.return_note:
+            banner = QLabel(self.return_note)
+            banner.setObjectName("Banner")
+            banner.setWordWrap(True)
+            layout.addWidget(banner)
 
         self.fields: dict[tuple[str, int], QWidget] = {}
         self.calc_labels: dict[tuple[str, int], QLabel] = {}
@@ -268,6 +281,16 @@ class ResultEntryDialog(QDialog):
             self.complete_button.clicked.connect(lambda *_: self._complete())
             buttons.addWidget(save)
             buttons.addWidget(self.complete_button)
+        if (self.review_mode and self.status == AnalysisStatus.COMPLETE
+                and self.user.can(Permission.REVIEW_RECORDS)):
+            send_back = QPushButton("Return for correction…")
+            send_back.setProperty("danger", True)
+            send_back.clicked.connect(lambda *_: self._return())
+            accept = QPushButton("Accept and sign…")
+            accept.setProperty("primary", True)
+            accept.clicked.connect(lambda *_: self._accept_review())
+            buttons.addWidget(send_back)
+            buttons.addWidget(accept)
         buttons.addWidget(close)
         layout.addLayout(buttons)
         self._recalculate()
@@ -400,6 +423,37 @@ class ResultEntryDialog(QDialog):
             if calc.failures:
                 QMessageBox.warning(self, "OOS opened",
                                     f"{len(calc.failures)} OOS investigation(s) opened. See the OOS page.")
+            self.accept()
+
+    def _return(self) -> None:
+        comment, ok = QInputDialog.getMultiLineText(
+            self, "Return for correction", f"What must the analyst correct on {self.method_label} ({self.sample_id})?")
+        if not ok:
+            return
+        try:
+            with self.db.session() as session:
+                review.return_test(session, self.user, self.analysis_id, comment)
+        except AurumError as exc:
+            show_error(self, exc)
+            return
+        self.accept()
+
+    def _accept_review(self) -> None:
+        extra = QWidget()
+        form = QFormLayout(extra)
+        form.setContentsMargins(0, 0, 0, 0)
+        comment = QLineEdit()
+        comment.setPlaceholderText("Optional review comment")
+        form.addRow("Comment", comment)
+
+        def action(password):
+            with self.db.session() as session:
+                return review.accept_test(session, self.user, self.analysis_id, password, comment.text())
+
+        statement = (f"By entering your password you electronically sign:\n“{SignatureMeaning.REVIEWED}” "
+                     f"{self.user.full_name} — I have checked the raw values, calculations and results of "
+                     f"{self.method_label} on {self.sample_id}.")
+        if SignDialog(self, "Accept test review", statement, action, "Sign", extra).exec() == QDialog.Accepted:
             self.accept()
 
     def _close(self) -> None:
