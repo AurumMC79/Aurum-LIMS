@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, MetaData, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, MetaData, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.types import TypeDecorator
 
@@ -219,6 +219,8 @@ class Sample(Base):
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
     created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     updated_at: Mapped[datetime] = mapped_column(default=utcnow)
+    # Phase 3: the specification whose limits the results are compared with.
+    specification_id: Mapped[int | None] = mapped_column(ForeignKey("specifications.id"))
 
 
 class CustodyEvent(Base):
@@ -252,3 +254,177 @@ class IdCounter(Base):
     scope: Mapped[str] = mapped_column(String(64), primary_key=True)
     period: Mapped[str] = mapped_column(String(16), primary_key=True)
     last_value: Mapped[int] = mapped_column(Integer, default=0)
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: methods, specifications, tests, results, OOS
+# ---------------------------------------------------------------------------
+
+
+class TestMethod(Base):
+    """One version of an analytical method. Versions are edited while Draft,
+    locked once Active, and replaced by activating a newer version."""
+
+    __tablename__ = "test_methods"
+    __table_args__ = (UniqueConstraint("code", "version", name="uq_test_methods_code"),)
+    __test__ = False  # not a pytest test class
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    code: Mapped[str] = mapped_column(String(40), index=True)
+    name: Mapped[str] = mapped_column(String(150))
+    version: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(16))
+    sop_reference: Mapped[str | None] = mapped_column(String(100))
+    description: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    activated_at: Mapped[datetime | None]
+    activated_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    retired_at: Mapped[datetime | None]
+
+
+class MethodParameter(Base):
+    """Something entered or calculated in a method: an input (weight, peak
+    area) or a result (assay %, pH, appearance)."""
+
+    __tablename__ = "method_parameters"
+    __table_args__ = (UniqueConstraint("method_id", "key", name="uq_method_parameters_method_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    method_id: Mapped[int] = mapped_column(ForeignKey("test_methods.id"), index=True)
+    position: Mapped[int] = mapped_column(Integer)
+    key: Mapped[str] = mapped_column(String(40))
+    name: Mapped[str] = mapped_column(String(100))
+    kind: Mapped[str] = mapped_column(String(16))
+    result_type: Mapped[str] = mapped_column(String(16))
+    unit: Mapped[str | None] = mapped_column(String(20))
+    decimals: Mapped[int | None] = mapped_column(Integer)
+    replicates: Mapped[int] = mapped_column(Integer, default=1)
+    formula: Mapped[str | None] = mapped_column(Text)
+
+
+class Specification(Base):
+    """One version of a specification: the limits a material must meet."""
+
+    __tablename__ = "specifications"
+    __table_args__ = (UniqueConstraint("code", "version", name="uq_specifications_code"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    code: Mapped[str] = mapped_column(String(40), index=True)
+    name: Mapped[str] = mapped_column(String(150))
+    version: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(16))
+    material_name: Mapped[str | None] = mapped_column(String(200))
+    sample_type_id: Mapped[int | None] = mapped_column(ForeignKey("sample_types.id"))
+    description: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    activated_at: Mapped[datetime | None]
+    activated_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    retired_at: Mapped[datetime | None]
+
+
+class SpecLimit(Base):
+    """A limit for one result parameter of a method (referenced by method code
+    and parameter key, so it applies to every version of the method)."""
+
+    __tablename__ = "spec_limits"
+    __table_args__ = (
+        UniqueConstraint("spec_id", "method_code", "parameter_key", name="uq_spec_limits_spec_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    spec_id: Mapped[int] = mapped_column(ForeignKey("specifications.id"), index=True)
+    position: Mapped[int] = mapped_column(Integer)
+    method_code: Mapped[str] = mapped_column(String(40))
+    parameter_key: Mapped[str] = mapped_column(String(40))
+    limit_type: Mapped[str] = mapped_column(String(16))
+    low: Mapped[str | None] = mapped_column(String(32))
+    high: Mapped[str | None] = mapped_column(String(32))
+    expected_text: Mapped[str | None] = mapped_column(String(100))
+
+
+class Analysis(Base):
+    """A test (one method version) to be performed on one sample."""
+
+    __tablename__ = "analyses"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sample_id: Mapped[int] = mapped_column(ForeignKey("samples.id"), index=True)
+    method_id: Mapped[int] = mapped_column(ForeignKey("test_methods.id"))
+    status: Mapped[str] = mapped_column(String(16), index=True)
+    assigned_to_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    started_at: Mapped[datetime | None]
+    completed_at: Mapped[datetime | None]
+    completed_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    signature_id: Mapped[int | None] = mapped_column(ForeignKey("electronic_signatures.id"))
+    cancel_reason: Mapped[str | None] = mapped_column(Text)
+    comment: Mapped[str | None] = mapped_column(Text)
+
+
+class ResultValue(Base):
+    """One entered value: a parameter's replicate, exactly as typed."""
+
+    __tablename__ = "result_values"
+    __table_args__ = (
+        UniqueConstraint("analysis_id", "parameter_key", "replicate", name="uq_result_values_analysis_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    analysis_id: Mapped[int] = mapped_column(ForeignKey("analyses.id"), index=True)
+    parameter_key: Mapped[str] = mapped_column(String(40))
+    replicate: Mapped[int] = mapped_column(Integer)
+    value: Mapped[str] = mapped_column(String(64))
+    entered_at: Mapped[datetime] = mapped_column(default=utcnow)
+    entered_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    updated_at: Mapped[datetime] = mapped_column(default=utcnow)
+    updated_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+
+
+class ReportableResult(Base):
+    """A final result, frozen when the analyst signs the analysis as complete.
+    Immutable (enforced by triggers)."""
+
+    __tablename__ = "reportable_results"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    analysis_id: Mapped[int] = mapped_column(ForeignKey("analyses.id"), index=True)
+    parameter_key: Mapped[str] = mapped_column(String(40))
+    parameter_name: Mapped[str] = mapped_column(String(100))
+    unit: Mapped[str | None] = mapped_column(String(20))
+    replicate_values: Mapped[str | None] = mapped_column(Text)
+    mean: Mapped[str | None] = mapped_column(String(64))
+    rsd: Mapped[str | None] = mapped_column(String(32))
+    reported_value: Mapped[str] = mapped_column(String(64))
+    spec_text: Mapped[str | None] = mapped_column(String(120))
+    conformance: Mapped[str] = mapped_column(String(16))
+    comment: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class OOSInvestigation(Base):
+    """An out-of-specification result and its investigation."""
+
+    __tablename__ = "oos_investigations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    number: Mapped[str] = mapped_column(String(32), unique=True)
+    sample_id: Mapped[int] = mapped_column(ForeignKey("samples.id"), index=True)
+    analysis_id: Mapped[int] = mapped_column(ForeignKey("analyses.id"))
+    parameter_key: Mapped[str] = mapped_column(String(40))
+    parameter_name: Mapped[str] = mapped_column(String(100))
+    result_value: Mapped[str] = mapped_column(String(64))
+    spec_text: Mapped[str | None] = mapped_column(String(120))
+    status: Mapped[str] = mapped_column(String(16), index=True)
+    phase: Mapped[str] = mapped_column(String(32))
+    description: Mapped[str] = mapped_column(Text)
+    investigation_notes: Mapped[str | None] = mapped_column(Text)
+    root_cause: Mapped[str | None] = mapped_column(Text)
+    conclusion: Mapped[str | None] = mapped_column(String(64))
+    opened_at: Mapped[datetime] = mapped_column(default=utcnow)
+    opened_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    closed_at: Mapped[datetime | None]
+    closed_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    signature_id: Mapped[int | None] = mapped_column(ForeignKey("electronic_signatures.id"))
