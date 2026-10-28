@@ -188,9 +188,9 @@ def logout(session: Session, user: SessionUser, trigger: str = "user") -> None:
     audit.record(session, AuditAction.LOGOUT, actor=user, entity_type="user", entity_id=user.id, new={"trigger": trigger})
 
 
-def record_session_locked(session: Session, user: SessionUser) -> None:
+def record_session_locked(session: Session, user: SessionUser, trigger: str = "inactivity") -> None:
     audit.record(session, AuditAction.SESSION_LOCKED, actor=user, entity_type="user", entity_id=user.id,
-                 new={"trigger": "inactivity"})
+                 new={"trigger": trigger})
 
 
 def check_new_password(
