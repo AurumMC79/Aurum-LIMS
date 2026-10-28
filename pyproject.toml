@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aurum-lims"
+version = "0.1.0"
+description = "Aurum LIMS - a laboratory information management system for QC / regulated laboratories"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Jeremy Monahan" }]
+dependencies = [
+    "PySide6-Essentials>=6.7",
+    "SQLAlchemy>=2.0",
+    "alembic>=1.13",
+    "argon2-cffi>=23.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-qt>=4.4",
+    "pyinstaller>=6.6",
+]
+
+[project.gui-scripts]
+aurum-lims = "aurum_lims.app:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+aurum_lims = [
+    "ui/*.qss",
+    "migrations/*.py",
+    "migrations/*.mako",
+    "migrations/versions/*.py",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+qt_api = "pyside6"

@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Build output (PyInstaller)
+build/
+dist/
+*.spec
+
+# Local databases and logs - lab data never goes into git
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+logs/
+
+# Editors / OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
