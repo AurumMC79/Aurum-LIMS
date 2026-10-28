@@ -31,10 +31,12 @@ from PySide6.QtWidgets import (
 )
 
 from aurum_lims.db import Database
-from aurum_lims.db.models import Sample, SampleType, User
+from PySide6.QtGui import QColor
+
+from aurum_lims.db.models import Sample, SampleType, Specification, User
 from aurum_lims.errors import AurumError
 from aurum_lims.security.identity import SessionUser
-from aurum_lims.services import esign, sample_ids, samples, sample_types, storage
+from aurum_lims.services import esign, sample_ids, samples, sample_types, storage, testing
 from aurum_lims.services.sample_types import CATEGORY_FIELDS, FIELD_LABELS, Category
 from aurum_lims.services.samples import (
     DISPOSAL_METHODS,
@@ -545,6 +547,11 @@ class SampleDetailDialog(QDialog):
             signatures = esign.signatures_for(session, "sample", sample.sample_id)
             parent_id = session.get(Sample, sample.parent_id).sample_id if sample.parent_id else None
             children = [c.sample_id for c in session.query(Sample).filter(Sample.parent_id == sample.id).order_by(Sample.id)]
+            spec = session.get(Specification, sample.specification_id) if sample.specification_id else None
+            spec_label = f"{spec.code} v{spec.version} – {spec.name}" if spec else None
+            tests = [
+                (a, testing.reportable_results(session, a.id)) for a in testing.analyses_for_sample(session, user, sample.id)
+            ]
         self.setWindowTitle(f"Sample {sample.sample_id}")
 
         def where(location_id, holder_id):
@@ -576,6 +583,7 @@ class SampleDetailDialog(QDialog):
             ("Disposed", f"{format_local(sample.disposed_at)} by {names.get(sample.disposed_by_id, '?')} ({sample.disposal_method})" if sample.disposed_at else None),
             ("Aliquot of", parent_id),
             ("Aliquots", ", ".join(children) or None),
+            ("Specification", spec_label),
             ("Notes", sample.notes),
         ]
         rows = [(label, value) for label, value in rows if value]
@@ -616,6 +624,35 @@ class SampleDetailDialog(QDialog):
                 item.setToolTip(value)
                 table.setItem(r, c, item)
         layout.addWidget(table, 1)
+
+        if tests:
+            layout.addWidget(QLabel("<b>Tests and results</b>"))
+            test_table = QTableWidget(0, 5)
+            test_table.setHorizontalHeaderLabels(["Test", "Status", "Result", "Specification", "Conformance"])
+            test_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+            test_table.verticalHeader().hide()
+            test_table.setAlternatingRowColors(True)
+            test_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+            test_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+            for analysis, results in tests:
+                lines = results or [None]
+                for res in lines:
+                    r = test_table.rowCount()
+                    test_table.insertRow(r)
+                    values = [f"{analysis.method_code} v{analysis.method_version}", analysis.status]
+                    if res is None:
+                        values += ["", "", ""]
+                    else:
+                        values += [f"{res.parameter_name}: {res.reported_value} {res.unit or ''}".strip(),
+                                   res.spec_text or "", res.conformance]
+                    for c, value in enumerate(values):
+                        item = QTableWidgetItem(value)
+                        if c == 4 and value == "Fail":
+                            item.setForeground(QColor("#b42318"))
+                        elif c == 4 and value == "Pass":
+                            item.setForeground(QColor("#067647"))
+                        test_table.setItem(r, c, item)
+            layout.addWidget(test_table, 1)
 
         if signatures:
             sig_text = "\n".join(

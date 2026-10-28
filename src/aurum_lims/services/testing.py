@@ -457,7 +457,7 @@ def complete_analysis(session: Session, actor: SessionUser, analysis_id: int, pa
         session.add(ReportableResult(
             analysis_id=analysis.id, parameter_key=p.key, parameter_name=p.name, unit=p.unit,
             replicate_values=json.dumps(p.replicate_values, ensure_ascii=False),
-            mean=formulas.format_decimal(p.mean) if p.mean is not None else None,
+            mean=_display(p.mean, p.decimals) if p.mean is not None else None,
             rsd=formulas.format_decimal(p.rsd, 2) if p.rsd is not None else None,
             reported_value=p.reported or "", spec_text=p.spec_text,
             conformance=(p.conformance or Conformance.REPORT).value, comment=comments.get(p.key) or None,

@@ -21,13 +21,17 @@ Phase 1: user accounts, roles, the audit trail and electronic signatures.
 - Dashboard counts: awaiting receipt, in the lab, overdue
 - Not yet: barcode/label printing (deferred at the lab's request)
 
-## Phase 3: Methods, specifications and results
-- Test methods / SOP references with versioning
-- Analytes, units, result types (numeric, text, pass/fail), significant figures and rounding rules
-- Specifications (limits per product/sample type, with versioning)
-- Result entry with automatic in/out-of-specification flags
-- Calculated results (formulas), replicate handling, LOD/LOQ reporting
-- Out-of-specification (OOS) investigation records
+## Phase 3: Methods, specifications and results ✅
+- Versioned test methods (Draft → QA-approved Active → Retired) with SOP references
+- Inputs and results (number, text, pass/fail), units, decimals, replicates
+- Calculated results with safe, exact-decimal formulas evaluated per replicate; mean and %RSD
+- USP 7.20 rounding (half-up to the reporting decimals) before comparison with the limit
+- Versioned specifications with range / NLT / NMT / < / > / text / pass / report-only limits
+- Tests assigned to samples by hand; specification chosen per sample (matching specs suggested)
+- Live calculation while entering results; reasons required for changes to saved values
+- Analyst e-signature locks results; out-of-spec results require a comment and open an OOS investigation
+- OOS investigation log, closed by QA with a conclusion and e-signature
+- Not yet: LOD/LOQ handling ("< LOQ" results), system suitability criteria, instrument file import
 
 ## Phase 4: Review, approval and reporting
 - Review/approval workflow using electronic signatures (Performed by → Reviewed by → Approved by)

@@ -3,9 +3,21 @@
 A Laboratory Information Management System for QC and regulated laboratories
 (GMP, ISO/IEC 17025), built as a Windows desktop application.
 
-**Status:** Phases 1 (foundation) and 2 (samples and chain of custody) are
-complete. Test methods, specifications and results come next. See
-[docs/ROADMAP.md](docs/ROADMAP.md).
+**Status:** Phases 1 (foundation), 2 (samples and chain of custody) and 3
+(methods, specifications, results and OOS) are complete. Review/approval and
+Certificates of Analysis come next. See [docs/ROADMAP.md](docs/ROADMAP.md).
+
+## Methods, specifications and results (Phase 3)
+
+| Area | What it does |
+|---|---|
+| Methods | Each method lists its **inputs** (weights, peak areas, standard purity) and **results** (assay, impurities, pH, appearance). A result can be entered by hand, or **calculated** with a formula that uses the keys of parameters above it, e.g. `area_spl / area_std * wt_std / wt_spl * purity_std`. Formulas may use `+ - * / ^`, brackets, `sqrt ln log10 exp abs min max`, and nothing else. Parameters can have several replicates; a single value (such as the standard weight) is shared by every replicate. |
+| Specifications | Limits per result: between, NLT, NMT, <, >, text must match (e.g. *Conforms*), must be Pass, or report only. Limits refer to the method code and result key, so they keep working when a method gets a new version. |
+| Versioning | Methods and specifications are edited as **drafts** and approved by **QA with an electronic signature**. To change an active one, create a new version; the old version is retired when the new one is activated. Each test records the exact method version it was run with. |
+| Assigning tests | On the Samples page, **Tests…** lets you choose the specification (matching ones are suggested) and tick the tests to run. Tests can be assigned to a person. |
+| Result entry | The **Testing** page lists open tests. As values are typed, calculations, mean, %RSD, the reported value and Pass/Fail update live. All arithmetic is exact decimal. The mean is rounded half-up to the method's decimals and the rounded value is compared with the limit (USP General Notices 7.20). Changing a value that was already saved requires a reason, and the old and new values are audited. |
+| Signing | The analyst signs the test as performed. Results are then locked and stored permanently. Sample status follows testing: Received → In Testing → Testing Complete. |
+| OOS | A result outside its limit is shown in red. Signing then requires a comment and opens an **OOS investigation** (`OOS-YYYY-NNNN`). Analysts and QA record the phase, notes and root cause; QA closes it with a conclusion and an electronic signature. |
 
 ## Samples and chain of custody (Phase 2)
 
@@ -23,7 +35,7 @@ complete. Test methods, specifications and results come next. See
 | Area | What it does |
 |---|---|
 | Accounts | One account per person. First launch creates the Administrator. Accounts are deactivated, never deleted, so every record stays attributable. |
-| Roles | **Administrator** (users, settings, sample types and storage), **QA Reviewer** (review/approve, sample types and storage), **Analyst** (registers and handles samples), **Viewer** (read-only). Administrators do not approve data (segregation of duties). |
+| Roles | **Administrator** (users, settings, and drafting methods, specifications, sample types and storage), **QA Reviewer** (approves methods and specifications, closes OOS investigations, manages master data), **Analyst** (registers and handles samples, enters and signs results), **Viewer** (read-only). Administrators cannot approve anything (segregation of duties). |
 | Passwords | Argon2id hashing. Minimum length with a letter and a number. Expiry (default 90 days). Recent passwords cannot be re-used. Temporary passwords must be changed at first sign-in. |
 | Lockout | 5 wrong passwords lock the account until an Administrator unlocks it. |
 | Inactivity | The screen locks after 15 minutes without input and needs the same user's password to continue. A **Lock** button locks it immediately. |

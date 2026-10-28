@@ -26,6 +26,8 @@ from aurum_lims.security.identity import SessionUser
 from aurum_lims.security.roles import Permission
 from aurum_lims.services import samples, sample_types, storage
 from aurum_lims.services.samples import ON_HAND_STATUSES, SampleStatus, SampleSummary
+from aurum_lims.services.testing import ASSIGNABLE
+from aurum_lims.ui.testing_dialogs import AssignTestsDialog
 from aurum_lims.ui.common import ask_reason, danger_button, format_local, muted_label, primary_button, show_error
 from aurum_lims.ui.sample_dialogs import (
     AliquotDialog,
@@ -65,6 +67,8 @@ class SamplesView(QWidget):
         toolbar = QHBoxLayout()
         self.register_button = primary_button("Register samples")
         self.details_button = QPushButton("Details")
+        self.tests_button = QPushButton("Tests…")
+        self.tests_button.setToolTip("Choose the specification and add tests to this sample")
         self.receive_button = QPushButton("Receive")
         self.transfer_button = QPushButton("Transfer")
         self.aliquot_button = QPushButton("Aliquots")
@@ -73,10 +77,12 @@ class SamplesView(QWidget):
         self.cancel_button = danger_button("Cancel registration")
         self.register_button.setVisible(user.can(Permission.CREATE_RECORDS))
         self.aliquot_button.setVisible(user.can(Permission.CREATE_RECORDS))
+        self.tests_button.setVisible(user.can(Permission.CREATE_RECORDS) and user.can(Permission.EDIT_RECORDS))
         for button in (self.receive_button, self.transfer_button, self.edit_button, self.dispose_button,
                        self.cancel_button):
             button.setVisible(user.can(Permission.EDIT_RECORDS))
-        for button in (self.register_button, self.details_button, self.receive_button, self.transfer_button,
+        for button in (self.register_button, self.details_button, self.tests_button, self.receive_button,
+                       self.transfer_button,
                        self.aliquot_button, self.edit_button, self.dispose_button, self.cancel_button):
             toolbar.addWidget(button)
         toolbar.addStretch()
@@ -116,6 +122,7 @@ class SamplesView(QWidget):
 
         self.register_button.clicked.connect(lambda *_: self._register())
         self.details_button.clicked.connect(lambda *_: self._details())
+        self.tests_button.clicked.connect(lambda *_: self._tests())
         self.receive_button.clicked.connect(lambda *_: self._open(ReceiveDialog))
         self.transfer_button.clicked.connect(lambda *_: self._open(TransferDialog))
         self.aliquot_button.clicked.connect(lambda *_: self._aliquot())
@@ -191,6 +198,7 @@ class SamplesView(QWidget):
         status = row.status if row else None
         on_hand = status in ON_HAND_STATUSES
         self.details_button.setEnabled(row is not None)
+        self.tests_button.setEnabled(status in ASSIGNABLE)
         self.receive_button.setEnabled(status == SampleStatus.REGISTERED)
         self.transfer_button.setEnabled(on_hand)
         self.aliquot_button.setEnabled(on_hand)
@@ -209,6 +217,11 @@ class SamplesView(QWidget):
         row = self._selected()
         if row is not None:
             SampleDetailDialog(self.db, self.user, row.id, self).exec()
+
+    def _tests(self) -> None:
+        row = self._selected()
+        if row is not None and AssignTestsDialog(self.db, self.user, row.id, self).exec() == QDialog.Accepted:
+            self.refresh()
 
     def _open(self, dialog_class) -> None:
         row = self._selected()

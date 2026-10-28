@@ -10,8 +10,9 @@ from aurum_lims.db import Database
 from aurum_lims.db.models import User
 from aurum_lims.security.identity import SessionUser
 from aurum_lims.security.roles import ROLE_DESCRIPTIONS, Permission
-from aurum_lims.services import auth, samples, users
+from aurum_lims.services import auth, oos, samples, testing, users
 from aurum_lims.services.samples import ON_HAND_STATUSES, SampleStatus
+from aurum_lims.services.testing import AnalysisStatus
 from aurum_lims.ui.common import Card, format_local, muted_label
 
 
@@ -79,13 +80,24 @@ class DashboardView(QWidget):
             card.body.addWidget(detail)
             self.sample_cards[key] = (value, detail)
             self.grid.addWidget(card, 1, column)
+        for column, (key, title, help_text) in enumerate([
+            ("pending", "Tests not started", "Assigned and waiting for results"),
+            ("in_progress", "Tests in progress", "Results being entered"),
+            ("oos", "Open OOS investigations", "Results outside specification under investigation"),
+        ]):
+            card = Card(title)
+            value = QLabel("0")
+            value.setObjectName("CardValue")
+            card.body.addWidget(value)
+            card.body.addWidget(muted_label(help_text))
+            self.sample_cards[key] = (value, None)
+            self.grid.addWidget(card, 2, column)
 
         roadmap = Card("Coming next")
         roadmap.body.addWidget(
             muted_label(
-                "Phase 3 adds test methods and specifications, and result entry with out-of-specification "
-                "flags. Later phases add review and approval with electronic signatures, Certificates of "
-                "Analysis, and instrument and reagent tracking."
+                "Phase 4 adds second-person review and approval of results with electronic signatures, and "
+                "Certificates of Analysis. Phase 5 adds instruments, calibration and reagent tracking."
             )
         )
         layout.addWidget(roadmap)
@@ -100,6 +112,12 @@ class DashboardView(QWidget):
             counts = users.count_users(session) if self.users_card else None
             statuses = samples.status_counts(session)
             overdue, due_soon = samples.due_counts(session)
+            tests = testing.open_counts(session)
+            open_oos = oos.open_count(session)
+        self.sample_cards["pending"][0].setText(str(tests.get(AnalysisStatus.PENDING, 0)))
+        self.sample_cards["in_progress"][0].setText(str(tests.get(AnalysisStatus.IN_PROGRESS, 0)))
+        self.sample_cards["oos"][0].setText(str(open_oos))
+        self.sample_cards["oos"][0].setStyleSheet("color:#b42318" if open_oos else "")
         self.sample_cards["awaiting"][0].setText(str(statuses.get(SampleStatus.REGISTERED, 0)))
         self.sample_cards["on_hand"][0].setText(str(sum(statuses.get(s, 0) for s in ON_HAND_STATUSES)))
         self.sample_cards["due"][0].setText(str(overdue))
