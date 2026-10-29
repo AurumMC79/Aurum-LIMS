@@ -203,30 +203,33 @@ class StorageView(QWidget):
             for c, value in enumerate([row.sample_id, row.type_name, row.material_name or "", row.status]):
                 self.samples_table.setItem(r, c, QTableWidgetItem(value))
 
-    def _run(self, action) -> None:
+    def _run(self, action) -> bool:
         try:
             with self.db.session() as session:
                 action(session)
         except AurumError as exc:
             show_error(self, exc)
-            return
+            return False
         self.refresh()
+        return True
 
     def _add(self, parent_id: int | None) -> None:
         dialog = LocationDialog(self.choices, self, parent_id=parent_id)
-        if dialog.exec() == QDialog.Accepted:
-            self._run(lambda s: storage.create_location(s, self.user, **dialog.values()))
+        while dialog.exec() == QDialog.Accepted:
+            if self._run(lambda s: storage.create_location(s, self.user, **dialog.values())):
+                return
 
     def _edit(self) -> None:
         location = self.locations.get(self._selected_id())
         if location is None:
             return
         dialog = LocationDialog(self.choices, self, existing=location)
-        if dialog.exec() != QDialog.Accepted:
-            return
-        reason = ask_reason(self, "Edit location", f"Changing {self.paths.get(location.id)}.")
-        if reason is not None:
-            self._run(lambda s: storage.update_location(s, self.user, location.id, reason=reason, **dialog.values()))
+        # If saving fails (or the reason is cancelled) the window comes back with what was typed.
+        while dialog.exec() == QDialog.Accepted:
+            reason = ask_reason(self, "Edit location", f"Changing {self.paths.get(location.id)}.")
+            if reason is not None and self._run(
+                    lambda s: storage.update_location(s, self.user, location.id, reason=reason, **dialog.values())):
+                return
 
     def _toggle(self) -> None:
         location = self.locations.get(self._selected_id())

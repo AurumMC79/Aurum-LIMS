@@ -241,14 +241,13 @@ class UsersView(QWidget):
         if row is None:
             return
         dialog = UserDialog(self, existing=row)
-        if dialog.exec() != QDialog.Accepted:
-            return
-        reason = ask_reason(self, "Edit user", f"Changing {row.username}.")
-        if reason is None:
-            return
-        self._run(lambda s: users.update_user(
-            s, self.user, row.id, full_name=dialog.full_name.text(), role=dialog.role.currentData(), reason=reason
-        ))
+        # If saving fails (or the reason is cancelled) the window comes back with what was typed.
+        while dialog.exec() == QDialog.Accepted:
+            reason = ask_reason(self, "Edit user", f"Changing {row.username}.")
+            if reason is not None and self._run(lambda s: users.update_user(
+                s, self.user, row.id, full_name=dialog.full_name.text(), role=dialog.role.currentData(), reason=reason
+            )):
+                return
 
     def _reset_password(self) -> None:
         row = self._selected()

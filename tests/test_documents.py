@@ -115,19 +115,19 @@ def test_bug_reports(db, admin, make_user):
             bug_reports.submit(s, analyst, title="", area="Samples", severity="Low", description="x")
         with pytest.raises(ValidationError, match="PNG or JPEG"):
             bug_reports.submit(s, analyst, title="x", area="Samples", severity="Low", description="x",
-                               screenshot=b"GIF89a")
+                               screenshots=[b"GIF89a"])
         report = bug_reports.submit(s, analyst, title="Due date not saved", area="Samples", severity="Medium",
                                     description="Registered a sample with a due date; it shows blank.",
                                     steps="1. Register\n2. Tick due date", expected="Due date shown",
-                                    screenshot=PNG)
+                                    screenshots=[PNG])
         assert report.number == "BUG-0001"
     with db.session() as s:
         assert [r.number for r in bug_reports.list_reports(s, analyst)] == ["BUG-0001"]
         assert bug_reports.list_reports(s, other) == []  # only your own reports
         assert len(bug_reports.list_reports(s, None)) == 1  # developer tool sees all
-        assert bug_reports.screenshot(s, admin, report.id) == PNG
+        assert bug_reports.screenshots(s, admin, report.id) == [PNG]
         with pytest.raises(PermissionDenied):
-            bug_reports.screenshot(s, other, report.id)
+            bug_reports.screenshots(s, other, report.id)
         with pytest.raises(PermissionDenied):
             bug_reports.update_status(s, analyst, report.id, BugStatus.FIXED, "x")
         with pytest.raises(ValidationError, match="resolution"):

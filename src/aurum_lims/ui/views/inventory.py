@@ -398,9 +398,9 @@ class InventoryView(QWidget):
         if item is None:
             return
         dialog = ItemDialog(self, item)
-        if dialog.exec() != QDialog.Accepted:
-            return
-        reason = ask_reason(self, "Edit item", f"Changing {item.name}.")
-        if reason is not None:
-            self._run(lambda s: inventory.update_item(s, self.user, item.id, dialog.details(),
-                                                      dialog.active.isChecked(), reason))
+        # If saving fails (or the reason is cancelled) the window comes back with what was typed.
+        while dialog.exec() == QDialog.Accepted:
+            reason = ask_reason(self, "Edit item", f"Changing {item.name}.")
+            if reason is not None and self._run(lambda s: inventory.update_item(
+                    s, self.user, item.id, dialog.details(), dialog.active.isChecked(), reason)):
+                return

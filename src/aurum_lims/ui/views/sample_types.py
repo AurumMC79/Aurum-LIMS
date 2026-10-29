@@ -245,18 +245,19 @@ class SampleTypesView(QWidget):
 
     def _add(self) -> None:
         dialog = SampleTypeDialog(self)
-        if dialog.exec() == QDialog.Accepted:
-            self._run(lambda s: sample_types.create_type(s, self.user, **dialog.values()))
+        while dialog.exec() == QDialog.Accepted:
+            if self._run(lambda s: sample_types.create_type(s, self.user, **dialog.values())):
+                return
 
     def _edit(self) -> None:
         existing = self._selected()
         if existing is None:
             return
         dialog = SampleTypeDialog(self, existing)
-        if dialog.exec() != QDialog.Accepted:
-            return
-        reason = ask_reason(self, "Edit sample type", f"Changing {existing.name}.")
-        if reason is not None:
-            self._run(lambda s: sample_types.update_type(
+        # If saving fails (or the reason is cancelled) the window comes back with what was typed.
+        while dialog.exec() == QDialog.Accepted:
+            reason = ask_reason(self, "Edit sample type", f"Changing {existing.name}.")
+            if reason is not None and self._run(lambda s: sample_types.update_type(
                 s, self.user, existing.id, reason=reason, is_active=dialog.active.isChecked(), **dialog.values()
-            ))
+            )):
+                return

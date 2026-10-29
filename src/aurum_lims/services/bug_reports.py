@@ -11,11 +11,11 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, aliased
 
 from aurum_lims import config
-from aurum_lims.db.models import BugReport, IdCounter, User, utcnow
+from aurum_lims.db.models import BugReport, BugReportScreenshot, IdCounter, User, utcnow
 from aurum_lims.errors import NotFound, PermissionDenied, ValidationError
 from aurum_lims.security.identity import SessionUser
 from aurum_lims.security.roles import Permission, require
@@ -23,6 +23,7 @@ from aurum_lims.services import audit
 from aurum_lims.services.audit import AuditAction
 
 MAX_SCREENSHOT_BYTES = 10 * 1024 * 1024
+MAX_SCREENSHOTS = 10
 
 
 class Severity(StrEnum):
@@ -64,7 +65,7 @@ class BugRow:
     steps: str | None
     expected: str | None
     resolution: str | None
-    has_screenshot: bool
+    screenshot_count: int
     app_version: str
     reported_at: datetime
     reported_by: str
@@ -84,8 +85,8 @@ def _next_number(session: Session) -> str:
 
 def submit(session: Session, actor: SessionUser, *, title: str, area: str, severity: Severity | str,
            description: str, steps: str | None = None, expected: str | None = None,
-           screenshot: bytes | None = None) -> BugReport:
-    """Any signed-in user can report a bug."""
+           screenshots: list[bytes] | None = None) -> BugReport:
+    """Any signed-in user can report a bug, with up to ``MAX_SCREENSHOTS`` screenshots."""
     title = " ".join((title or "").split())
     if not title:
         raise ValidationError("Give the problem a short title.")
@@ -93,21 +94,28 @@ def submit(session: Session, actor: SessionUser, *, title: str, area: str, sever
         raise ValidationError("The title must be 200 characters or fewer.")
     if not (description or "").strip():
         raise ValidationError("Describe what happened.")
-    if screenshot is not None:
-        if len(screenshot) > MAX_SCREENSHOT_BYTES:
-            raise ValidationError("The screenshot is larger than 10 MB.")
-        if not (screenshot.startswith(b"\x89PNG") or screenshot.startswith(b"\xff\xd8")):
-            raise ValidationError("The screenshot must be a PNG or JPEG image.")
+    screenshots = [s for s in (screenshots or []) if s]
+    if len(screenshots) > MAX_SCREENSHOTS:
+        raise ValidationError(f"A report can have at most {MAX_SCREENSHOTS} screenshots.")
+    for number, image in enumerate(screenshots, start=1):
+        if len(image) > MAX_SCREENSHOT_BYTES:
+            raise ValidationError(f"Screenshot {number} is larger than 10 MB.")
+        if not (image.startswith(b"\x89PNG") or image.startswith(b"\xff\xd8")):
+            raise ValidationError(f"Screenshot {number} must be a PNG or JPEG image.")
     report = BugReport(
         number=_next_number(session), title=title, area=(area or "General").strip()[:60],
         severity=Severity(severity).value, description=description.strip(), steps=(steps or "").strip() or None,
-        expected=(expected or "").strip() or None, screenshot=screenshot or None, app_version=config.APP_VERSION,
+        expected=(expected or "").strip() or None, app_version=config.APP_VERSION,
         status=BugStatus.NEW, reported_by_id=actor.id,
     )
     session.add(report)
     session.flush()
+    for position, image in enumerate(screenshots, start=1):
+        session.add(BugReportScreenshot(report_id=report.id, position=position, image=image))
+    session.flush()
     audit.record(session, AuditAction.BUG_REPORTED, actor=actor, entity_type="bug_report", entity_id=report.number,
-                 new={"title": title, "area": report.area, "severity": report.severity})
+                 new={"title": title, "area": report.area, "severity": report.severity,
+                      "screenshots": len(screenshots)})
     return report
 
 
@@ -142,15 +150,19 @@ def list_reports(session: Session, actor: SessionUser | None, *, include_closed:
         stmt = stmt.where(BugReport.reported_by_id == actor.id)
     if not include_closed:
         stmt = stmt.where(BugReport.status.in_([s.value for s in OPEN_STATUSES]))
+    counts = dict(session.execute(select(BugReportScreenshot.report_id, func.count())
+                                  .group_by(BugReportScreenshot.report_id)).all())
     return [BugRow(b.id, b.number, b.title, b.area, b.severity, b.status, b.description, b.steps, b.expected,
-                   b.resolution, b.screenshot is not None, b.app_version, b.reported_at, who, b.updated_at, upd)
+                   b.resolution, counts.get(b.id, 0), b.app_version, b.reported_at, who, b.updated_at, upd)
             for b, who, upd in session.execute(stmt)]
 
 
-def screenshot(session: Session, actor: SessionUser | None, report_id: int) -> bytes | None:
+def screenshots(session: Session, actor: SessionUser | None, report_id: int) -> list[bytes]:
+    """The report's screenshots in the order they were added."""
     report = session.get(BugReport, report_id)
     if report is None:
         raise NotFound("Bug report not found.")
     if actor is not None and not actor.can(Permission.MANAGE_BUG_REPORTS) and report.reported_by_id != actor.id:
         raise PermissionDenied("You can only see your own reports.")
-    return report.screenshot
+    return list(session.scalars(select(BugReportScreenshot.image).where(BugReportScreenshot.report_id == report_id)
+                                .order_by(BugReportScreenshot.position)))

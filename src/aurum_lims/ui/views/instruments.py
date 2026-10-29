@@ -360,11 +360,12 @@ class InstrumentsView(QWidget):
         if inst is None:
             return
         dialog = InstrumentDialog(self, inst)
-        if dialog.exec() != QDialog.Accepted:
-            return
-        reason = ask_reason(self, "Edit instrument", f"Changing {inst.code}.")
-        if reason is not None:
-            self._run(lambda s: instruments.update_instrument(s, self.user, inst.id, dialog.details(), reason))
+        # If saving fails (or the reason is cancelled) the window comes back with what was typed.
+        while dialog.exec() == QDialog.Accepted:
+            reason = ask_reason(self, "Edit instrument", f"Changing {inst.code}.")
+            if reason is not None and self._run(
+                    lambda s: instruments.update_instrument(s, self.user, inst.id, dialog.details(), reason)):
+                return
 
     def _event(self) -> None:
         inst = self._selected()

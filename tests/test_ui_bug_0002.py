@@ -1,6 +1,7 @@
 """BUG-0002: the Report a bug form was cut off on the right and the list needed sideways scrolling."""
 
 import pytest
+from PySide6.QtGui import QGuiApplication, QImage
 
 from aurum_lims.services import bug_reports
 from aurum_lims.ui.main_window import MainWindow
@@ -17,8 +18,18 @@ def _settle(qtbot, window, width, height):
     return settings.bug_tab
 
 
+def _attach_screenshots(qtbot, tab, count: int) -> None:
+    for i in range(count):
+        image = QImage(800, 450, QImage.Format_RGB32)
+        image.fill(0x101010 * (i + 1))
+        QGuiApplication.clipboard().setImage(image)
+        tab._paste()
+    qtbot.wait(200)
+
+
+@pytest.mark.parametrize("screenshots", [0, 3])
 @pytest.mark.parametrize("size", [(1440, 900), (1200, 760), (1100, 640), (1000, 640), (960, 600)])
-def test_report_form_and_list_fit(qtbot, db, admin, size):
+def test_report_form_and_list_fit(qtbot, db, admin, size, screenshots):
     with db.session() as s:
         for i in range(3):
             bug_reports.submit(s, admin, title=f"Report number {i} with a reasonably long title", area="Settings",
@@ -26,6 +37,8 @@ def test_report_form_and_list_fit(qtbot, db, admin, size):
     window = MainWindow(db, admin)
     qtbot.addWidget(window)
     tab = _settle(qtbot, window, *size)
+    # Attaching screenshots (BUG-0004) must not push the form wider than its panel again.
+    _attach_screenshots(qtbot, tab, screenshots)
     try:
         # The whole form is visible: nothing hangs off the right edge of its panel.
         assert tab.form_scroll.horizontalScrollBar().maximum() == 0
@@ -35,6 +48,6 @@ def test_report_form_and_list_fit(qtbot, db, admin, size):
         # The date column is shown exactly when it fits (font widths differ between screens).
         date_hidden = tab.table.isColumnHidden(tab.COLUMNS.index("Reported"))
         assert date_hidden == (tab.table.width() < tab._needed_width())
-        assert tab.preview.text() == "No screenshot attached"
+        assert tab.preview.text() == ("No screenshots attached" if screenshots == 0 else "3 screenshots attached")
     finally:
         window.sign_out("test")

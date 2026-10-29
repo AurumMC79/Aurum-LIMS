@@ -38,7 +38,7 @@ def _open_session() -> Session:
     return Session(engine)
 
 
-def _as_markdown(row: bug_reports.BugRow, screenshot_file: str | None = None) -> str:
+def _as_markdown(row: bug_reports.BugRow, screenshot_files: list[str] | None = None) -> str:
     lines = [
         f"# {row.number}: {row.title}",
         "",
@@ -56,9 +56,12 @@ def _as_markdown(row: bug_reports.BugRow, screenshot_file: str | None = None) ->
         lines += ["", "## Expected", "", row.expected]
     if row.resolution:
         lines += ["", "## Resolution", "", row.resolution]
-    if row.has_screenshot:
-        lines += ["", "## Screenshot", "", f"![screenshot]({screenshot_file})" if screenshot_file
-                  else "(attached – use --export to save it)"]
+    if row.screenshot_count:
+        lines += ["", "## Screenshots" if row.screenshot_count > 1 else "## Screenshot", ""]
+        if screenshot_files:
+            lines += [f"![screenshot {n}]({name})" for n, name in enumerate(screenshot_files, start=1)]
+        else:
+            lines.append(f"({row.screenshot_count} attached – use --export to save them)")
     return "\n".join(lines) + "\n"
 
 
@@ -80,11 +83,13 @@ def main(argv: list[str] | None = None) -> int:
             out = Path(args.export)
             out.mkdir(parents=True, exist_ok=True)
             for row in rows:
-                shot_name = None
-                if row.has_screenshot:
-                    shot_name = f"{row.number}.png"
-                    (out / shot_name).write_bytes(bug_reports.screenshot(session, None, row.id))
-                (out / f"{row.number}.md").write_text(_as_markdown(row, shot_name), encoding="utf-8")
+                names = []
+                images = bug_reports.screenshots(session, None, row.id)
+                for n, image in enumerate(images, start=1):
+                    name = f"{row.number}.png" if len(images) == 1 else f"{row.number}-{n}.png"
+                    (out / name).write_bytes(image)
+                    names.append(name)
+                (out / f"{row.number}.md").write_text(_as_markdown(row, names), encoding="utf-8")
             print(f"Exported {len(rows)} report(s) to {out}")
             return 0
         if args.number:

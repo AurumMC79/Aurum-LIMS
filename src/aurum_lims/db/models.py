@@ -673,7 +673,6 @@ class BugReport(Base):
     description: Mapped[str] = mapped_column(Text)
     steps: Mapped[str | None] = mapped_column(Text)
     expected: Mapped[str | None] = mapped_column(Text)
-    screenshot: Mapped[bytes | None] = mapped_column(LargeBinary)
     app_version: Mapped[str] = mapped_column(String(20))
     status: Mapped[str] = mapped_column(String(20), index=True)
     resolution: Mapped[str | None] = mapped_column(Text)
@@ -681,3 +680,14 @@ class BugReport(Base):
     reported_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     updated_at: Mapped[datetime | None]
     updated_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+
+
+class BugReportScreenshot(Base):
+    """A screenshot attached to a bug report (a report can have several)."""
+
+    __tablename__ = "bug_report_screenshots"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    report_id: Mapped[int] = mapped_column(ForeignKey("bug_reports.id"), index=True)
+    position: Mapped[int] = mapped_column(Integer)
+    image: Mapped[bytes] = mapped_column(LargeBinary)

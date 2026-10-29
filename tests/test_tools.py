@@ -14,7 +14,7 @@ def reports(db, admin, monkeypatch):
     monkeypatch.setenv("AURUM_LIMS_DATABASE_URL", db.url)
     with db.session() as s:
         bug_reports.submit(s, admin, title="Lot expiry shown in red too early", area="Inventory", severity="Low",
-                           description="Expiry is 31 days away but shows amber.", screenshot=PNG)
+                           description="Expiry is 31 days away but shows amber.", screenshots=[PNG])
         fixed = bug_reports.submit(s, admin, title="Typo on dashboard", area="Dashboard", severity="Low",
                                    description="'recieved'")
         bug_reports.update_status(s, admin, fixed.id, "Fixed", "Corrected spelling")
@@ -34,7 +34,7 @@ def test_show_and_export(reports, capsys, tmp_path):
     out = capsys.readouterr().out
     assert "# BUG-0001: Lot expiry shown in red too early" in out and "Expiry is 31 days away" in out
     assert tool.main(["--all", "--export", str(tmp_path)]) == 0
-    assert (tmp_path / "BUG-0001.md").read_text(encoding="utf-8").count("![screenshot](BUG-0001.png)") == 1
+    assert (tmp_path / "BUG-0001.md").read_text(encoding="utf-8").count("![screenshot 1](BUG-0001.png)") == 1
     assert (tmp_path / "BUG-0001.png").read_bytes() == PNG
     assert "Corrected spelling" in (tmp_path / "BUG-0002.md").read_text(encoding="utf-8")
 

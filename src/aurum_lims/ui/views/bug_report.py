@@ -1,9 +1,9 @@
-"""'Report a bug' tab: write a report (with a screenshot) and follow its status."""
+"""'Report a bug' tab: write a report (with screenshots) and follow its status."""
 
 from __future__ import annotations
 
-from PySide6.QtCore import QBuffer, QByteArray, QEvent, QIODevice, Qt
-from PySide6.QtGui import QColor, QGuiApplication, QImage, QPixmap
+from PySide6.QtCore import QBuffer, QByteArray, QEvent, QIODevice, QSize, Qt
+from PySide6.QtGui import QColor, QGuiApplication, QIcon, QImage, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -15,6 +15,9 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
+    QListView,
+    QListWidget,
+    QListWidgetItem,
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
@@ -53,7 +56,7 @@ def image_to_png(image: QImage) -> bytes:
 
 
 class ReportDetailDialog(QDialog):
-    def __init__(self, row: bug_reports.BugRow, screenshot: bytes | None, parent=None):
+    def __init__(self, row: bug_reports.BugRow, screenshots: list[bytes], parent=None):
         super().__init__(parent)
         self.setWindowTitle(f"{row.number} – {row.title}")
         self.resize(760, 640)
@@ -75,13 +78,20 @@ class ReportDetailDialog(QDialog):
             parts.append(f"Resolution:\n{row.resolution}")
         text.setPlainText("\n\n".join(parts))
         layout.addWidget(text, 1)
-        if screenshot:
-            pixmap = QPixmap()
-            pixmap.loadFromData(screenshot)
-            image = QLabel()
-            image.setPixmap(pixmap.scaledToWidth(min(pixmap.width(), 1200), Qt.SmoothTransformation))
+        if screenshots:
+            # All screenshots, one under another, in a scrolling panel.
+            gallery = QWidget()
+            column = QVBoxLayout(gallery)
+            for number, data in enumerate(screenshots, start=1):
+                pixmap = QPixmap()
+                pixmap.loadFromData(data)
+                if len(screenshots) > 1:
+                    column.addWidget(QLabel(f"<b>Screenshot {number} of {len(screenshots)}</b>"))
+                image = QLabel()
+                image.setPixmap(pixmap.scaledToWidth(min(pixmap.width(), 1200), Qt.SmoothTransformation))
+                column.addWidget(image)
             scroll = QScrollArea()
-            scroll.setWidget(image)
+            scroll.setWidget(gallery)
             layout.addWidget(scroll, 2)
         close = QDialogButtonBox(QDialogButtonBox.Close)
         close.rejected.connect(self.reject)
@@ -89,8 +99,12 @@ class ReportDetailDialog(QDialog):
 
 
 class StatusDialog(QDialog):
-    def __init__(self, row: bug_reports.BugRow, parent=None):
+    """Saves the new status itself, so a problem (e.g. a missing resolution note)
+    is shown in the window and nothing typed is lost (BUG-0003)."""
+
+    def __init__(self, db: Database, user: SessionUser, row: bug_reports.BugRow, parent=None):
         super().__init__(parent)
+        self.db, self.user, self.row = db, user, row
         self.setWindowTitle(f"Update {row.number}")
         self.setMinimumWidth(460)
         form = QFormLayout(self)
@@ -103,10 +117,24 @@ class StatusDialog(QDialog):
         self.resolution.setFixedHeight(80)
         form.addRow("Status", self.status)
         form.addRow("Resolution", self.resolution)
+        self.error = error_label()
+        form.addRow(self.error)
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        buttons.accepted.connect(self.accept)
+        buttons.button(QDialogButtonBox.Ok).setText("Save")
+        buttons.accepted.connect(self._save)
         buttons.rejected.connect(self.reject)
         form.addRow(buttons)
+
+    def _save(self) -> None:
+        try:
+            with self.db.session() as session:
+                bug_reports.update_status(session, self.user, self.row.id, self.status.currentText(),
+                                          self.resolution.toPlainText())
+        except AurumError as exc:
+            show_label_message(self.error, str(exc))
+            self.resolution.setFocus()
+            return
+        self.accept()
 
 
 class BugReportTab(QWidget):
@@ -118,7 +146,7 @@ class BugReportTab(QWidget):
         self.db = db
         self.user = user
         self.rows: list[bug_reports.BugRow] = []
-        self.screenshot: bytes | None = None
+        self.screenshots: list[bytes] = []
         self.can_manage = user.can(Permission.MANAGE_BUG_REPORTS)
 
         layout = QVBoxLayout(self)
@@ -164,14 +192,26 @@ class BugReportTab(QWidget):
         paste.clicked.connect(lambda *_: self._paste())
         choose = QPushButton("Choose image…")
         choose.clicked.connect(lambda *_: self._choose())
-        self.clear_shot = QPushButton("Remove")
-        self.clear_shot.clicked.connect(lambda *_: self._set_screenshot(None))
+        self.clear_shot = QPushButton("Remove selected")
+        self.clear_shot.clicked.connect(lambda *_: self._remove_selected_screenshot())
         for b in (paste, choose):
             shot_row.addWidget(b)
         shot_row.addStretch()
-        form.addRow("Screenshot", shot_row)
+        form.addRow("Screenshots", shot_row)
+        # BUG-0004: each paste / chosen image is added as a thumbnail; several per report.
+        self.shot_list = QListWidget()
+        self.shot_list.setViewMode(QListView.IconMode)
+        self.shot_list.setFlow(QListView.LeftToRight)
+        self.shot_list.setWrapping(False)
+        self.shot_list.setMovement(QListView.Static)
+        self.shot_list.setIconSize(QSize(96, 60))
+        self.shot_list.setFixedHeight(96)
+        self.shot_list.setMinimumWidth(120)
+        self.shot_list.itemSelectionChanged.connect(self._refresh_screenshot_controls)
+        form.addRow("", self.shot_list)
         self.preview = QLabel()
         self.preview.setObjectName("Muted")
+        self.preview.setWordWrap(True)
         preview_row = QHBoxLayout()
         preview_row.addWidget(self.preview)
         preview_row.addWidget(self.clear_shot)
@@ -192,10 +232,7 @@ class BugReportTab(QWidget):
         self.form_scroll.setWidgetResizable(True)
         self.form_scroll.setFrameShape(QScrollArea.NoFrame)
         self.form_scroll.setWidget(form_card)
-        # BUG-0002: never let the splitter squeeze the form narrower than its fields
-        # (it used to be clipped on the right). The list takes the remaining space.
-        self.form_scroll.setMinimumWidth(
-            form_card.minimumSizeHint().width() + self.form_scroll.verticalScrollBar().sizeHint().width())
+        self._fit_form()  # the list takes the remaining space
         splitter.addWidget(self.form_scroll)
 
         # ----- the list -----
@@ -239,7 +276,7 @@ class BugReportTab(QWidget):
 
         self.view_button.clicked.connect(lambda *_: self._view())
         self.status_button.clicked.connect(lambda *_: self._update_status())
-        self._set_screenshot(None)
+        self._refresh_screenshot_controls()
         self._update_buttons()
 
     # ----- layout -----
@@ -271,17 +308,48 @@ class BugReportTab(QWidget):
             self._fit_columns()
         return super().eventFilter(watched, event)
 
-    # ----- screenshot -----
-    def _set_screenshot(self, data: bytes | None) -> None:
-        self.screenshot = data
-        self.clear_shot.setEnabled(data is not None)
-        if data is None:
-            self.preview.clear()  # setPixmap() would also wipe the text, so clear first
-            self.preview.setText("No screenshot attached")
+    # ----- screenshots -----
+    def _add_screenshot(self, data: bytes) -> None:
+        if len(self.screenshots) >= bug_reports.MAX_SCREENSHOTS:
+            show_label_message(self.error, f"A report can have at most {bug_reports.MAX_SCREENSHOTS} screenshots.")
             return
+        show_label_message(self.error, "")
+        self.screenshots.append(data)
         pixmap = QPixmap()
         pixmap.loadFromData(data)
-        self.preview.setPixmap(pixmap.scaledToWidth(min(pixmap.width(), 320), Qt.SmoothTransformation))
+        item = QListWidgetItem(QIcon(pixmap), str(len(self.screenshots)))
+        item.setToolTip(f"Screenshot {len(self.screenshots)} ({pixmap.width()} × {pixmap.height()})")
+        self.shot_list.addItem(item)
+        self._refresh_screenshot_controls()
+
+    def _remove_selected_screenshot(self) -> None:
+        rows = sorted((self.shot_list.row(item) for item in self.shot_list.selectedItems()), reverse=True)
+        for row in rows:
+            self.shot_list.takeItem(row)
+            del self.screenshots[row]
+        for row in range(self.shot_list.count()):  # renumber
+            self.shot_list.item(row).setText(str(row + 1))
+        self._refresh_screenshot_controls()
+
+    def _clear_screenshots(self) -> None:
+        self.screenshots = []
+        self.shot_list.clear()
+        self._refresh_screenshot_controls()
+
+    def _refresh_screenshot_controls(self) -> None:
+        count = len(self.screenshots)
+        self.shot_list.setVisible(count > 0)
+        self.preview.setText("No screenshots attached" if count == 0 else
+                             f"{count} screenshot{'s' if count != 1 else ''} attached")
+        self.clear_shot.setVisible(count > 0)
+        self.clear_shot.setEnabled(bool(self.shot_list.selectedItems()))
+        self._fit_form()
+
+    def _fit_form(self) -> None:
+        # BUG-0002: never let the splitter squeeze the form narrower than its fields
+        # (it used to be clipped on the right). Re-checked whenever the form's contents change.
+        self.form_scroll.setMinimumWidth(
+            self.form_card.minimumSizeHint().width() + self.form_scroll.verticalScrollBar().sizeHint().width())
 
     def _paste(self) -> None:
         image = QGuiApplication.clipboard().image()
@@ -289,17 +357,16 @@ class BugReportTab(QWidget):
             show_label_message(self.error, "There is no image on the clipboard. Press Win+Shift+S, select an area, "
                                            "then click 'Paste screenshot' again.")
             return
-        show_label_message(self.error, "")
-        self._set_screenshot(image_to_png(image))
+        self._add_screenshot(image_to_png(image))
 
     def _choose(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "Choose screenshot", "", "Images (*.png *.jpg *.jpeg)")
-        if path:
+        paths, _ = QFileDialog.getOpenFileNames(self, "Choose screenshots", "", "Images (*.png *.jpg *.jpeg)")
+        for path in paths:
             image = QImage(path)
             if image.isNull():
-                show_label_message(self.error, "That file could not be read as an image.")
+                show_label_message(self.error, f"{path} could not be read as an image.")
                 return
-            self._set_screenshot(image_to_png(image))
+            self._add_screenshot(image_to_png(image))
 
     # ----- reports -----
     def refresh(self) -> None:
@@ -342,7 +409,7 @@ class BugReportTab(QWidget):
                     session, self.user, title=self.title_edit.text(), area=self.area.currentText(),
                     severity=self.severity.currentData(), description=self.description.toPlainText(),
                     steps=self.steps.toPlainText(), expected=self.expected.toPlainText(),
-                    screenshot=self.screenshot,
+                    screenshots=self.screenshots,
                 )
                 number = report.number
         except AurumError as exc:
@@ -351,7 +418,7 @@ class BugReportTab(QWidget):
         show_label_message(self.error, "")
         for widget in (self.title_edit, self.description, self.steps, self.expected):
             widget.clear()
-        self._set_screenshot(None)
+        self._clear_screenshots()
         self.refresh()
         QMessageBox.information(self, "Thank you", f"Your report was saved as {number}.")
 
@@ -361,24 +428,15 @@ class BugReportTab(QWidget):
             return
         try:
             with self.db.session() as session:
-                shot = bug_reports.screenshot(session, self.user, row.id)
+                images = bug_reports.screenshots(session, self.user, row.id)
         except AurumError as exc:
             show_error(self, exc)
             return
-        ReportDetailDialog(row, shot, self).exec()
+        ReportDetailDialog(row, images, self).exec()
 
     def _update_status(self) -> None:
         row = self._selected()
         if row is None:
             return
-        dialog = StatusDialog(row, self)
-        if dialog.exec() != QDialog.Accepted:
-            return
-        try:
-            with self.db.session() as session:
-                bug_reports.update_status(session, self.user, row.id, dialog.status.currentText(),
-                                          dialog.resolution.toPlainText())
-        except AurumError as exc:
-            show_error(self, exc)
-            return
-        self.refresh()
+        if StatusDialog(self.db, self.user, row, self).exec() == QDialog.Accepted:
+            self.refresh()
