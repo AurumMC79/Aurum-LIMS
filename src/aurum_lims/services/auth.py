@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import hashlib
+import secrets
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 from enum import Enum
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from aurum_lims.db.models import PasswordHistory, User, utcnow
+from aurum_lims.db.models import AppSetting, PasswordHistory, User, utcnow
 from aurum_lims.errors import NotFound, ValidationError
 from aurum_lims.security import passwords
 from aurum_lims.security.identity import SessionUser
@@ -248,3 +250,53 @@ def password_expires_in_days(session: Session, user_id: int) -> int | None:
         return None
     remaining = user.password_changed_at + timedelta(days=settings.password_expiry_days) - utcnow()
     return max(0, remaining.days)
+
+
+# ---------------------------------------------------------------------------
+# Reload: hand the signed-in session over to the restarted app
+# ---------------------------------------------------------------------------
+
+RESUME_KEY = "resume_token"
+RESUME_LIFETIME = timedelta(seconds=60)
+
+
+def create_resume_token(session: Session, user: SessionUser) -> str:
+    """A single-use code (valid for one minute) that lets the restarted app carry on
+    the same user's session without a password. Only its hash is stored."""
+    token = secrets.token_urlsafe(32)
+    digest = hashlib.sha256(token.encode()).hexdigest()
+    value = f"{user.id}|{digest}|{(utcnow() + RESUME_LIFETIME).isoformat()}"
+    row = session.get(AppSetting, RESUME_KEY)
+    if row is None:
+        session.add(AppSetting(key=RESUME_KEY, value=value, updated_by_id=user.id))
+    else:
+        row.value, row.updated_at, row.updated_by_id = value, utcnow(), user.id
+    session.flush()
+    return token
+
+
+def resume_session(session: Session, token: str | None) -> SessionUser | None:
+    """Exchange a reload code for the signed-in user. The code is consumed whether or
+    not it is valid; ``None`` means the user must sign in normally."""
+    row = session.get(AppSetting, RESUME_KEY)
+    if row is None or not token:
+        return None
+    stored = row.value
+    session.delete(row)
+    session.flush()
+    try:
+        user_id, digest, expires = stored.split("|")
+        valid = (secrets.compare_digest(digest, hashlib.sha256(token.encode()).hexdigest())
+                 and utcnow() <= datetime.fromisoformat(expires))
+    except ValueError:
+        valid = False
+    if not valid:
+        return None
+    user = session.get(User, int(user_id))
+    if user is None or not user.is_active or user.is_locked or user.must_change_password \
+            or password_expired(user, get_security_settings(session)):
+        return None
+    user.last_login_at = utcnow()
+    audit.record(session, AuditAction.LOGIN_SUCCESS, user_id=user.id, username=user.username,
+                 entity_type="user", entity_id=user.id, new={"method": "app reload (same session)"})
+    return SessionUser.from_user(user)

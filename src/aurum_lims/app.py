@@ -19,6 +19,7 @@ from aurum_lims.ui.common import app_icon, load_stylesheet
 from aurum_lims.ui.first_run_dialog import FirstRunDialog
 from aurum_lims.ui.login_dialog import LoginDialog
 from aurum_lims.ui.main_window import MainWindow
+from aurum_lims.ui.reload import start_new_instance, take_resume_request
 
 log = logging.getLogger("aurum_lims")
 
@@ -34,6 +35,17 @@ class AppController(QObject):
         self.user: SessionUser | None = None
 
     def start(self) -> bool:
+        token, page = take_resume_request()
+        if token:  # started by Reload: carry on the same session
+            with self.db.session() as session:
+                user = auth.resume_session(session, token)
+            if user is not None:
+                self._open_main_window(user)
+                if page:
+                    self.window.show_page(page)
+                log.info("User %s resumed after reload", user.username)
+                return True
+            return self.sign_in("Aurum LIMS was reloaded. Please sign in again.")
         with self.db.session() as session:
             first_run = not users.has_any_users(session)
         if first_run and FirstRunDialog(self.db).exec() != QDialog.Accepted:
@@ -66,8 +78,30 @@ class AppController(QObject):
         self.user = user
         self.window = MainWindow(self.db, user)
         self.window.signed_out.connect(self._on_signed_out)
+        self.window.reload_requested.connect(self._on_reload)
         self.window.show()
         log.info("User %s signed in", user.username)
+
+    def _on_reload(self, page: str) -> None:
+        """Start a fresh copy (latest code) that continues this session, then close this one."""
+        user = self.user
+        with self.db.session() as session:
+            auth.logout(session, user, "app reload")
+            token = auth.create_resume_token(session, user)
+        try:
+            start_new_instance(token, page)
+        except OSError as exc:
+            log.exception("Could not restart")
+            QMessageBox.warning(self.window, config.APP_NAME,
+                                f"Aurum LIMS could not restart itself:\n\n{exc}\n\nPlease close and reopen it.")
+            with self.db.session() as session:
+                auth.resume_session(session, token)  # consume the code; this window carries on
+            self.window.reload_failed()
+            return
+        log.info("Reloading for %s (page %s)", user.username, page or "-")
+        self.user = None
+        self.window.hide()
+        self.app.quit()
 
     def _on_signed_out(self, trigger: str, exit_app: bool) -> None:
         if self.user is not None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -27,6 +28,7 @@ from aurum_lims.services import auth
 from aurum_lims.services.settings import get_security_settings
 from aurum_lims.ui.common import app_icon, logo_pixmap
 from aurum_lims.ui.lock_screen import IdleWatcher, LockDialog
+from aurum_lims.ui.reload import UpdateWatcher
 from aurum_lims.ui.views.account import AccountView
 from aurum_lims.ui.views.audit import AuditView
 from aurum_lims.ui.views.certificates import CertificatesView
@@ -49,6 +51,8 @@ from aurum_lims.ui.views.users import UsersView
 class MainWindow(QMainWindow):
     # (trigger, exit_application)
     signed_out = Signal(str, bool)
+    # page title to come back to after the app restarts
+    reload_requested = Signal(str)
 
     def __init__(self, db: Database, user: SessionUser):
         super().__init__()
@@ -105,6 +109,7 @@ class MainWindow(QMainWindow):
         content_layout.setContentsMargins(0, 0, 0, 0)
         content_layout.setSpacing(0)
         content_layout.addWidget(self._build_header())
+        content_layout.addWidget(self._build_update_banner())
         content_layout.addWidget(self.stack, 1)
         root.addWidget(content, 1)
         self.setCentralWidget(central)
@@ -116,6 +121,12 @@ class MainWindow(QMainWindow):
             timeout = get_security_settings(session).session_timeout_minutes
         self.idle = IdleWatcher(QApplication.instance(), timeout, self)
         self.idle.idle.connect(lambda: self._lock("inactivity"))
+
+        # F5 refreshes the page's data; Ctrl+Shift+R reloads the whole app (latest version).
+        QShortcut(QKeySequence("F5"), self, activated=self.refresh_current_page)
+        QShortcut(QKeySequence("Ctrl+Shift+R"), self, activated=self.request_reload)
+        self.update_watcher = UpdateWatcher(self)
+        self.update_watcher.updated.connect(self.update_banner.show)
 
     # ----- layout -----
     def _add_page(self, page: QWidget) -> None:
@@ -169,6 +180,11 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(24, 12, 16, 12)
         layout.addWidget(self.page_title)
         layout.addStretch()
+        reload_button = QPushButton("Reload")
+        reload_button.setToolTip("Restart Aurum LIMS to load the latest version. You stay signed in and come back "
+                                 "to this page. (Ctrl+Shift+R)\nPress F5 to just refresh the data on this page.")
+        reload_button.clicked.connect(lambda *_: self.request_reload())
+        layout.addWidget(reload_button)
         lock = QPushButton("Lock")
         lock.setToolTip("Lock the screen now (e.g. when stepping away from the bench)")
         lock.clicked.connect(lambda *_: self._lock("locked by user"))
@@ -177,6 +193,49 @@ class MainWindow(QMainWindow):
         layout.addWidget(lock)
         layout.addWidget(sign_out)
         return header
+
+    def _build_update_banner(self) -> QWidget:
+        """Shown when the app's code has been updated on disk while it is open."""
+        self.update_banner = QFrame()
+        self.update_banner.setObjectName("UpdateBanner")
+        layout = QHBoxLayout(self.update_banner)
+        layout.setContentsMargins(24, 8, 16, 8)
+        layout.addWidget(QLabel("Aurum LIMS has been updated. Reload to start using the new version "
+                                "– you will stay signed in."))
+        layout.addStretch()
+        reload_now = QPushButton("Reload now")
+        reload_now.setProperty("primary", True)
+        reload_now.clicked.connect(lambda *_: self.request_reload(confirm=False))
+        later = QPushButton("Later")
+        later.clicked.connect(lambda *_: self.update_banner.hide())
+        layout.addWidget(reload_now)
+        layout.addWidget(later)
+        self.update_banner.hide()
+        return self.update_banner
+
+    def refresh_current_page(self) -> None:
+        current = self.stack.currentWidget()
+        if current is not None:
+            current.refresh()
+
+    def request_reload(self, confirm: bool = True) -> None:
+        """Restart the app (latest code) and come back to this page, still signed in."""
+        if self._signing_out:
+            return
+        if confirm and QMessageBox.question(
+                self, "Reload Aurum LIMS",
+                "Restart Aurum LIMS now to load the latest version?\n\nYou will stay signed in and come back to "
+                "this page. Anything typed but not yet saved will be lost.") != QMessageBox.Yes:
+            return
+        self._signing_out = True
+        self.idle.pause()
+        current = self.stack.currentWidget()
+        self.reload_requested.emit(current.title if current is not None else "")
+
+    def reload_failed(self) -> None:
+        """The restart did not happen; carry on in this window."""
+        self._signing_out = False
+        self.idle.resume()
 
     def _show_page(self, index: int) -> None:
         if index < 0:

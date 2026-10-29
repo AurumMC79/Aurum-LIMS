@@ -91,6 +91,13 @@ Then double-click **`scripts\create_desktop_shortcut.bat`** once. It puts an
 start the app from that icon. The shortcut runs the code in this folder, so it
 always starts the latest version.
 
+**Reloading without closing:** the **Reload** button in the top bar (or
+Ctrl+Shift+R) restarts Aurum LIMS with the latest code and runs any database
+upgrade. You stay signed in and return to the same page. The audit trail
+records it as a sign-out followed by a sign-in marked "app reload". When the
+code in this folder changes while the app is open, a banner offers to reload.
+**F5** just refreshes the data on the current page.
+
 Or, from a terminal in the project folder:
 
 ```bash
