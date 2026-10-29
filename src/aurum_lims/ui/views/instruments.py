@@ -34,7 +34,15 @@ from aurum_lims.security.identity import SessionUser
 from aurum_lims.security.roles import Permission
 from aurum_lims.services import instruments
 from aurum_lims.services.instruments import CATEGORIES, CHECK_EVENTS, RESULTS, EventType, InstrumentDetails
-from aurum_lims.ui.common import ask_reason, error_label, muted_label, primary_button, show_error, show_label_message
+from aurum_lims.ui.common import (
+    GridTable,
+    ask_reason,
+    error_label,
+    muted_label,
+    primary_button,
+    show_error,
+    show_label_message,
+)
 
 RED, AMBER, GREEN, GREY = "#b42318", "#b54708", "#067647", "#8b98a8"
 
@@ -47,7 +55,7 @@ def date_edit(value: date | None = None) -> QDateEdit:
 
 
 def _table(columns: list[str], stretch: int) -> QTableWidget:
-    table = QTableWidget(0, len(columns))
+    table = GridTable(0, len(columns))
     table.setHorizontalHeaderLabels(columns)
     table.setSelectionBehavior(QAbstractItemView.SelectRows)
     table.setSelectionMode(QAbstractItemView.SingleSelection)

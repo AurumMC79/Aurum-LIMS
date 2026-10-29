@@ -16,7 +16,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPlainTextEdit,
     QPushButton,
-    QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
@@ -28,7 +27,16 @@ from aurum_lims.security.identity import SessionUser
 from aurum_lims.services import sample_ids, sample_types
 from aurum_lims.services.sample_ids import TOKEN_HELP, ResetPolicy
 from aurum_lims.services.sample_types import Category
-from aurum_lims.ui.common import Card, ask_reason, error_label, muted_label, primary_button, show_error, show_label_message
+from aurum_lims.ui.common import (
+    Card,
+    GridTable,
+    ask_reason,
+    error_label,
+    muted_label,
+    primary_button,
+    show_error,
+    show_label_message,
+)
 
 
 class FormatEditor(QWidget):
@@ -185,7 +193,7 @@ class SampleTypesView(QWidget):
         toolbar.addStretch()
         layout.addLayout(toolbar)
 
-        self.table = QTableWidget(0, len(self.COLUMNS))
+        self.table = GridTable(0, len(self.COLUMNS))
         self.table.setHorizontalHeaderLabels(self.COLUMNS)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)

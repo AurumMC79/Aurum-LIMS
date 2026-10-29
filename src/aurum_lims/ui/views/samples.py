@@ -14,7 +14,6 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLineEdit,
     QPushButton,
-    QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
@@ -28,7 +27,15 @@ from aurum_lims.services import samples, sample_types, storage
 from aurum_lims.services.samples import ON_HAND_STATUSES, SampleStatus, SampleSummary
 from aurum_lims.services.testing import ASSIGNABLE
 from aurum_lims.ui.testing_dialogs import AssignTestsDialog
-from aurum_lims.ui.common import ask_reason, danger_button, format_local, muted_label, primary_button, show_error
+from aurum_lims.ui.common import (
+    GridTable,
+    ask_reason,
+    danger_button,
+    format_local,
+    muted_label,
+    primary_button,
+    show_error,
+)
 from aurum_lims.ui.sample_dialogs import (
     AliquotDialog,
     DisposeDialog,
@@ -106,7 +113,7 @@ class SamplesView(QWidget):
         filters.addWidget(self.count_label)
         layout.addLayout(filters)
 
-        self.table = QTableWidget(0, len(self.COLUMNS))
+        self.table = GridTable(0, len(self.COLUMNS))
         self.table.setHorizontalHeaderLabels(self.COLUMNS)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)

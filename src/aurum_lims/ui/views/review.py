@@ -25,13 +25,13 @@ from aurum_lims.security.roles import Permission
 from aurum_lims.services import certificates, lab_info, review
 from aurum_lims.services.esign import SignatureMeaning
 from aurum_lims.services.formulas import Conformance
-from aurum_lims.ui.common import error_label, format_local, muted_label, open_pdf, primary_button, show_error
+from aurum_lims.ui.common import GridTable, error_label, format_local, muted_label, open_pdf, primary_button, show_error
 from aurum_lims.ui.sign_dialog import SignDialog
 from aurum_lims.ui.testing_dialogs import CONFORMANCE_COLORS, ResultEntryDialog
 
 
 def _table(columns: list[str], stretch: int) -> QTableWidget:
-    table = QTableWidget(0, len(columns))
+    table = GridTable(0, len(columns))
     table.setHorizontalHeaderLabels(columns)
     table.setSelectionBehavior(QAbstractItemView.SelectRows)
     table.setSelectionMode(QAbstractItemView.SingleSelection)

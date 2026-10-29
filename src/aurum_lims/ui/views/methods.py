@@ -18,7 +18,6 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QSpinBox,
-    QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
@@ -34,7 +33,16 @@ from aurum_lims.services.instruments import CATEGORIES
 from aurum_lims.services.inventory import ItemKind
 from aurum_lims.services.methods import ParameterSpec, RequirementSpec
 from aurum_lims.services.versioning import VersionStatus
-from aurum_lims.ui.common import ask_reason, error_label, format_local, muted_label, primary_button, show_error, show_label_message
+from aurum_lims.ui.common import (
+    GridTable,
+    ask_reason,
+    error_label,
+    format_local,
+    muted_label,
+    primary_button,
+    show_error,
+    show_label_message,
+)
 from aurum_lims.ui.sign_dialog import SignDialog
 
 # (label, kind, result_type, calculated)
@@ -55,7 +63,7 @@ def type_index(p: ParameterSpec) -> int:
     return 1
 
 
-class ParameterTable(QTableWidget):
+class ParameterTable(GridTable):
     COLUMNS = ["Key", "Name", "Type", "Unit", "Decimals", "Replicates", "Formula (uses keys above)"]
 
     def __init__(self, parameters: list[ParameterSpec], parent=None):
@@ -140,7 +148,7 @@ class ParameterTable(QTableWidget):
         self.selectRow(target)
 
 
-class RequirementTable(QTableWidget):
+class RequirementTable(GridTable):
     """Equipment and materials a method needs."""
 
     COLUMNS = ["Needs", "Type / category", "Label (shown to the analyst)", "Fills parameter with lot purity"]
@@ -370,7 +378,7 @@ class MethodsView(QWidget):
         toolbar.addWidget(self.show_retired)
         layout.addLayout(toolbar)
 
-        self.table = QTableWidget(0, len(self.COLUMNS))
+        self.table = GridTable(0, len(self.COLUMNS))
         self.table.setHorizontalHeaderLabels(self.COLUMNS)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)

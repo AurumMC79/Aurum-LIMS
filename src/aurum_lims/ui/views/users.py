@@ -17,7 +17,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
-    QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
@@ -29,7 +28,17 @@ from aurum_lims.security.identity import SessionUser
 from aurum_lims.security.passwords import generate_temporary_password
 from aurum_lims.security.roles import ROLE_DESCRIPTIONS, Role
 from aurum_lims.services import users
-from aurum_lims.ui.common import ask_reason, danger_button, error_label, format_local, muted_label, primary_button, show_error, show_label_message
+from aurum_lims.ui.common import (
+    GridTable,
+    ask_reason,
+    danger_button,
+    error_label,
+    format_local,
+    muted_label,
+    primary_button,
+    show_error,
+    show_label_message,
+)
 
 
 @dataclass(frozen=True)
@@ -150,7 +159,7 @@ class UsersView(QWidget):
         toolbar.addStretch()
         layout.addLayout(toolbar)
 
-        self.table = QTableWidget(0, len(self.COLUMNS))
+        self.table = GridTable(0, len(self.COLUMNS))
         self.table.setHorizontalHeaderLabels(self.COLUMNS)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)

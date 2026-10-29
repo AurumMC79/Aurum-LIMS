@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QTableWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -111,6 +112,42 @@ class Card(QFrame):
             heading = QLabel(title)
             heading.setObjectName("CardTitle")
             self.body.addWidget(heading)
+
+
+GRID_COLOR = QColor("#d5dae1")  # keep in step with gridline-color in theme.qss
+
+
+class GridTable(QTableWidget):
+    """A table that looks like a spreadsheet: every cell is outlined, and the
+    grid carries on into the empty space below the last row (so an empty table
+    still shows its columns and rows, as in Excel)."""
+
+    def paintEvent(self, event) -> None:
+        super().paintEvent(event)
+        if not self.showGrid() or self.columnCount() == 0:
+            return
+        viewport = self.viewport()
+        vertical, horizontal = self.verticalHeader(), self.horizontalHeader()
+        last_row = self.rowCount() - 1
+        while last_row >= 0 and self.isRowHidden(last_row):
+            last_row -= 1
+        top = vertical.sectionViewportPosition(last_row) + vertical.sectionSize(last_row) if last_row >= 0 else 0
+        bottom = viewport.height()
+        if top >= bottom:
+            return
+        right = horizontal.length() - horizontal.offset()
+        painter = QPainter(viewport)
+        painter.setPen(GRID_COLOR)
+        row_height = vertical.defaultSectionSize()
+        y = top + row_height - 1
+        while y < bottom:
+            painter.drawLine(0, y, min(right, viewport.width()), y)
+            y += row_height
+        for column in range(self.columnCount()):
+            if not self.isColumnHidden(column):
+                x = horizontal.sectionViewportPosition(column) + horizontal.sectionSize(column) - 1
+                painter.drawLine(x, top, x, bottom)
+        painter.end()
 
 
 def ask_reason(parent: QWidget, title: str, prompt: str) -> str | None:

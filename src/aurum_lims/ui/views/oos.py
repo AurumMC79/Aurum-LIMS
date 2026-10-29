@@ -15,7 +15,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QPlainTextEdit,
     QPushButton,
-    QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
@@ -28,7 +27,15 @@ from aurum_lims.security.identity import SessionUser
 from aurum_lims.security.roles import Permission
 from aurum_lims.services import oos
 from aurum_lims.services.esign import SignatureMeaning
-from aurum_lims.ui.common import Card, error_label, format_local, muted_label, primary_button, show_label_message
+from aurum_lims.ui.common import (
+    Card,
+    GridTable,
+    error_label,
+    format_local,
+    muted_label,
+    primary_button,
+    show_label_message,
+)
 from aurum_lims.ui.sign_dialog import SignDialog
 
 
@@ -158,7 +165,7 @@ class OOSView(QWidget):
         toolbar.addWidget(self.include_closed)
         toolbar.addWidget(self.count)
         layout.addLayout(toolbar)
-        self.table = QTableWidget(0, len(self.COLUMNS))
+        self.table = GridTable(0, len(self.COLUMNS))
         self.table.setHorizontalHeaderLabels(self.COLUMNS)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)

@@ -23,7 +23,7 @@ from aurum_lims.errors import AurumError
 from aurum_lims.security.identity import SessionUser
 from aurum_lims.services import instruments, inventory, methods, usage
 from aurum_lims.services.methods import RequirementKind
-from aurum_lims.ui.common import error_label, muted_label, show_label_message
+from aurum_lims.ui.common import GridTable, error_label, muted_label, show_label_message
 
 OTHER = -1
 
@@ -125,7 +125,7 @@ class RecordUsageDialog(QDialog):
 
 def usage_table(requirements, usages) -> QTableWidget:
     """Requirement-by-requirement view of what has been recorded."""
-    table = QTableWidget(0, 4)
+    table = GridTable(0, 4)
     table.setHorizontalHeaderLabels(["Required", "Recorded", "Details", "Status"])
     table.setEditTriggers(QAbstractItemView.NoEditTriggers)
     table.setSelectionBehavior(QAbstractItemView.SelectRows)

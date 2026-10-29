@@ -24,7 +24,6 @@ from PySide6.QtWidgets import (
     QRadioButton,
     QScrollArea,
     QSpinBox,
-    QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
@@ -47,6 +46,7 @@ from aurum_lims.services.samples import (
 )
 from aurum_lims.ui.common import (
     Card,
+    GridTable,
     ask_reason,
     edit_to_utc,
     error_label,
@@ -607,7 +607,7 @@ class SampleDetailDialog(QDialog):
         layout.addWidget(info)
 
         layout.addWidget(QLabel("<b>Chain of custody</b>"))
-        table = QTableWidget(len(history), len(self.CUSTODY_COLUMNS))
+        table = GridTable(len(history), len(self.CUSTODY_COLUMNS))
         table.setHorizontalHeaderLabels(self.CUSTODY_COLUMNS)
         table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         table.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -635,7 +635,7 @@ class SampleDetailDialog(QDialog):
 
         if tests:
             layout.addWidget(QLabel("<b>Tests and results</b>"))
-            test_table = QTableWidget(0, 5)
+            test_table = GridTable(0, 5)
             test_table.setHorizontalHeaderLabels(["Test", "Status", "Result", "Specification", "Conformance"])
             test_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
             test_table.verticalHeader().hide()

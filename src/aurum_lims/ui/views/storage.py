@@ -16,7 +16,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QSplitter,
-    QTableWidget,
     QTableWidgetItem,
     QTreeWidget,
     QTreeWidgetItem,
@@ -30,7 +29,15 @@ from aurum_lims.security.identity import SessionUser
 from aurum_lims.security.roles import Permission
 from aurum_lims.services import samples, storage
 from aurum_lims.services.storage import LocationKind
-from aurum_lims.ui.common import ask_reason, error_label, muted_label, primary_button, show_error, show_label_message
+from aurum_lims.ui.common import (
+    GridTable,
+    ask_reason,
+    error_label,
+    muted_label,
+    primary_button,
+    show_error,
+    show_label_message,
+)
 
 
 class LocationDialog(QDialog):
@@ -130,7 +137,7 @@ class StorageView(QWidget):
         self.location_title = QLabel("Select a location")
         self.location_title.setObjectName("CardTitle")
         right_layout.addWidget(self.location_title)
-        self.samples_table = QTableWidget(0, 4)
+        self.samples_table = GridTable(0, 4)
         self.samples_table.setHorizontalHeaderLabels(["Sample ID", "Type", "Material / point", "Status"])
         self.samples_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.samples_table.setSelectionBehavior(QAbstractItemView.SelectRows)

@@ -18,7 +18,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
-    QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
@@ -30,7 +29,7 @@ from aurum_lims.security.identity import SessionUser
 from aurum_lims.security.roles import Permission
 from aurum_lims.services import audit
 from aurum_lims.services.audit import AuditAction
-from aurum_lims.ui.common import format_local, muted_label, primary_button, show_error
+from aurum_lims.ui.common import GridTable, format_local, muted_label, primary_button, show_error
 
 QUERY_LIMIT = 5000
 
@@ -116,7 +115,7 @@ class AuditView(QWidget):
         actions.addWidget(self.count_label)
         layout.addLayout(actions)
 
-        self.table = QTableWidget(0, len(self.COLUMNS))
+        self.table = GridTable(0, len(self.COLUMNS))
         self.table.setHorizontalHeaderLabels(self.COLUMNS)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)

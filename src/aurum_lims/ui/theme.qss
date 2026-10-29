@@ -157,32 +157,39 @@ QPushButton[danger="true"] {
     color: #b42318;
 }
 
-/* ---------- Tables ---------- */
+/* ---------- Tables (spreadsheet style: every cell outlined) ---------- */
 QTreeWidget {
     background: #ffffff;
-    border: 1px solid #e3e6ea;
-    border-radius: 6px;
-    alternate-background-color: #fafbfc;
+    border: 1px solid #b8c0ca;
+    alternate-background-color: #f7f9fb;
     selection-background-color: #f3e7c0;
     selection-color: #1f2933;
 }
 QTreeWidget::item {
     padding: 4px 2px;
+    border-right: 1px solid #d5dae1;
+    border-bottom: 1px solid #d5dae1;
 }
 QTableWidget, QTableView {
     background: #ffffff;
-    border: 1px solid #e3e6ea;
-    border-radius: 6px;
-    gridline-color: #eef0f2;
+    border: 1px solid #b8c0ca;
+    gridline-color: #d5dae1;
     selection-background-color: #f3e7c0;
     selection-color: #1f2933;
-    alternate-background-color: #fafbfc;
+    alternate-background-color: #f7f9fb;
 }
 QHeaderView::section {
-    background: #f7f8f9;
+    background: #e9edf2;
     border: none;
-    border-bottom: 1px solid #e3e6ea;
+    border-right: 1px solid #c3cad3;
+    border-bottom: 1px solid #b8c0ca;
     padding: 6px 8px;
     font-weight: 600;
-    color: #4a5562;
+    color: #374151;
+}
+QTableCornerButton::section {
+    background: #e9edf2;
+    border: none;
+    border-right: 1px solid #c3cad3;
+    border-bottom: 1px solid #b8c0ca;
 }

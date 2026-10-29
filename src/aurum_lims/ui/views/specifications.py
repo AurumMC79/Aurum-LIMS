@@ -17,7 +17,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
-    QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
@@ -32,12 +31,21 @@ from aurum_lims.services.esign import SignatureMeaning
 from aurum_lims.services.formulas import LimitType
 from aurum_lims.services.specifications import LimitSpec
 from aurum_lims.services.versioning import VersionStatus
-from aurum_lims.ui.common import ask_reason, error_label, format_local, muted_label, primary_button, show_error, show_label_message
+from aurum_lims.ui.common import (
+    GridTable,
+    ask_reason,
+    error_label,
+    format_local,
+    muted_label,
+    primary_button,
+    show_error,
+    show_label_message,
+)
 from aurum_lims.ui.sign_dialog import SignDialog
 from aurum_lims.ui.views.methods import STATUS_COLORS
 
 
-class LimitTable(QTableWidget):
+class LimitTable(GridTable):
     COLUMNS = ["Method", "Result", "Limit", "Low", "High", "Expected text", "Shows as"]
 
     def __init__(self, catalog: dict[str, list[tuple[str, str, str, str | None]]], limits: list[LimitSpec], parent=None):
@@ -252,7 +260,7 @@ class SpecificationsView(QWidget):
         toolbar.addStretch()
         toolbar.addWidget(self.show_retired)
         layout.addLayout(toolbar)
-        self.table = QTableWidget(0, len(self.COLUMNS))
+        self.table = GridTable(0, len(self.COLUMNS))
         self.table.setHorizontalHeaderLabels(self.COLUMNS)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)

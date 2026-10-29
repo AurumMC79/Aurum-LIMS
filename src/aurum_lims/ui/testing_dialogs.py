@@ -23,7 +23,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QScrollArea,
-    QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
@@ -39,7 +38,16 @@ from aurum_lims.services.esign import SignatureMeaning
 from aurum_lims.services.formulas import Conformance
 from aurum_lims.services.methods import ResultType, to_spec
 from aurum_lims.services.testing import OPEN_ANALYSIS, AnalysisStatus, Calculation
-from aurum_lims.ui.common import Card, ask_reason, error_label, format_local, muted_label, show_error, show_label_message
+from aurum_lims.ui.common import (
+    Card,
+    GridTable,
+    ask_reason,
+    error_label,
+    format_local,
+    muted_label,
+    show_error,
+    show_label_message,
+)
 from aurum_lims.ui.sign_dialog import SignDialog
 from aurum_lims.ui.usage_widgets import RecordUsageDialog, usage_table
 
@@ -293,7 +301,7 @@ class ResultEntryDialog(QDialog):
 
         layout.addWidget(QLabel("<b>Reportable results</b>  <span style='color:#6b7785'>(mean of replicates, "
                                 "rounded half-up to the method's decimals, then compared with the limit)</span>"))
-        self.summary = QTableWidget(0, len(self.SUMMARY_COLUMNS))
+        self.summary = GridTable(0, len(self.SUMMARY_COLUMNS))
         self.summary.setHorizontalHeaderLabels(self.SUMMARY_COLUMNS)
         self.summary.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.summary.verticalHeader().hide()

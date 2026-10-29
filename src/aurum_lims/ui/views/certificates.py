@@ -11,7 +11,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
-    QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
@@ -21,7 +20,7 @@ from aurum_lims.db import Database
 from aurum_lims.errors import AurumError
 from aurum_lims.security.identity import SessionUser
 from aurum_lims.services import certificates
-from aurum_lims.ui.common import format_local, muted_label, primary_button, show_error
+from aurum_lims.ui.common import GridTable, format_local, muted_label, primary_button, show_error
 from aurum_lims.ui.views.review import open_certificate
 
 
@@ -55,7 +54,7 @@ class CertificatesView(QWidget):
         toolbar.addWidget(self.search, 1)
         toolbar.addWidget(self.count)
         layout.addLayout(toolbar)
-        self.table = QTableWidget(0, len(self.COLUMNS))
+        self.table = GridTable(0, len(self.COLUMNS))
         self.table.setHorizontalHeaderLabels(self.COLUMNS)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)

@@ -21,7 +21,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPlainTextEdit,
     QPushButton,
-    QTableWidget,
     QTableWidgetItem,
     QTreeWidget,
     QTreeWidgetItem,
@@ -36,6 +35,7 @@ from aurum_lims.security.roles import Permission
 from aurum_lims.services import documents
 from aurum_lims.services.documents import MAX_PDF_BYTES, DocType
 from aurum_lims.ui.common import (
+    GridTable,
     ask_reason,
     error_label,
     format_local,
@@ -179,7 +179,7 @@ class HistoryDialog(QDialog):
         with db.session() as session:
             self.rows = documents.revisions(session, user, document_id)
         layout = QVBoxLayout(self)
-        self.table = QTableWidget(len(self.rows), 6)
+        self.table = GridTable(len(self.rows), 6)
         self.table.setHorizontalHeaderLabels(["Revision", "Effective", "Status", "What changed", "Uploaded",
                                               "File"])
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
