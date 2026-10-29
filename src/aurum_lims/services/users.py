@@ -8,9 +8,9 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from aurum_lims.db.models import User, utcnow
-from aurum_lims.errors import NotFound, ValidationError
+from aurum_lims.errors import NotFound, PermissionDenied, ValidationError
 from aurum_lims.security.identity import SessionUser
-from aurum_lims.security.roles import Permission, Role, require
+from aurum_lims.security.roles import PRIVILEGED_ROLES, Permission, Role, require
 from aurum_lims.services import audit
 from aurum_lims.services.audit import AuditAction
 from aurum_lims.services.auth import check_new_password, normalize_username, set_password
@@ -55,12 +55,46 @@ def _get(session: Session, user_id: int) -> User:
     return user
 
 
-def _other_active_admins(session: Session, excluding_id: int) -> int:
+ADMIN_ROLES = (Role.MASTER_ADMINISTRATOR, Role.ADMINISTRATOR)
+
+
+def _other_active(session: Session, excluding_id: int, roles) -> int:
     return session.scalar(
         select(func.count())
         .select_from(User)
-        .where(User.role == Role.ADMINISTRATOR, User.is_active.is_(True), User.id != excluding_id)
+        .where(User.role.in_([r.value for r in roles]), User.is_active.is_(True), User.id != excluding_id)
     )
+
+
+def _other_active_admins(session: Session, excluding_id: int) -> int:
+    return _other_active(session, excluding_id, ADMIN_ROLES)
+
+
+def _require_privilege_for(actor: SessionUser, *roles: Role | str) -> None:
+    """Only a Master Administrator may give, take away or manage the Master Administrator / IT Support roles."""
+    if any(Role(r) in PRIVILEGED_ROLES for r in roles) and not actor.can(Permission.MANAGE_PRIVILEGED_ROLES):
+        raise PermissionDenied("Only a Master Administrator can manage Master Administrator and IT Support accounts.")
+
+
+def ensure_master_administrator(session: Session) -> User | None:
+    """Make sure the system has a Master Administrator. If there is none (e.g. a database
+    set up before the role existed), the Administrator created at first-run set-up is
+    promoted. Returns the promoted user, or ``None`` if nothing changed."""
+    if session.scalar(select(User.id).where(User.role == Role.MASTER_ADMINISTRATOR,
+                                            User.is_active.is_(True)).limit(1)) is not None:
+        return None
+    first_admin = session.scalar(
+        select(User).where(User.role == Role.ADMINISTRATOR, User.is_active.is_(True)).order_by(User.id).limit(1))
+    if first_admin is None:
+        return None
+    first_admin.role = Role.MASTER_ADMINISTRATOR
+    audit.record(
+        session, AuditAction.USER_UPDATED, entity_type="user", entity_id=first_admin.id,
+        old={"role": Role.ADMINISTRATOR.value}, new={"role": Role.MASTER_ADMINISTRATOR.value},
+        reason="Master Administrator role introduced; given to the administrator created at first-run set-up",
+    )
+    session.flush()
+    return first_admin
 
 
 def describe(user: User) -> dict:
@@ -68,14 +102,14 @@ def describe(user: User) -> dict:
 
 
 def create_initial_admin(session: Session, username: str, full_name: str, password: str) -> SessionUser:
-    """First-run set-up: create the very first Administrator account."""
+    """First-run set-up: create the very first account, as Master Administrator."""
     if has_any_users(session):
         raise ValidationError("The initial administrator has already been created.")
     name = _clean_username(session, username)
     full = _clean_full_name(full_name)
     check_new_password(session, None, name, password, get_security_settings(session))
     user = User(
-        username=name, full_name=full, role=Role.ADMINISTRATOR, password_hash="", is_active=True,
+        username=name, full_name=full, role=Role.MASTER_ADMINISTRATOR, password_hash="", is_active=True,
         is_locked=False, failed_login_count=0, must_change_password=False, password_changed_at=utcnow(),
     )
     session.add(user)
@@ -117,6 +151,7 @@ def create_user(
     name = _clean_username(session, username)
     full = _clean_full_name(full_name)
     role = Role(role)
+    _require_privilege_for(actor, role)
     check_new_password(session, None, name, temporary_password, get_security_settings(session))
     user = User(
         username=name, full_name=full, role=role, password_hash="", is_active=True, is_locked=False,
@@ -144,14 +179,18 @@ def update_user(
     require(actor, Permission.MANAGE_USERS)
     reason = _require_reason(reason)
     user = _get(session, user_id)
+    _require_privilege_for(actor, user.role, *([role] if role is not None else []))
     old = describe(user)
     if full_name is not None:
         user.full_name = _clean_full_name(full_name)
     if role is not None:
         role = Role(role)
-        if user.role == Role.ADMINISTRATOR and role != Role.ADMINISTRATOR and user.is_active:
+        if user.role in ADMIN_ROLES and role not in ADMIN_ROLES and user.is_active:
             if _other_active_admins(session, user.id) == 0:
                 raise ValidationError("At least one active Administrator must remain.")
+        if user.role == Role.MASTER_ADMINISTRATOR and role != Role.MASTER_ADMINISTRATOR and user.is_active:
+            if _other_active(session, user.id, [Role.MASTER_ADMINISTRATOR]) == 0:
+                raise ValidationError("At least one active Master Administrator must remain.")
         user.role = role
     new = describe(user)
     changed_old = {k: v for k, v in old.items() if new[k] != v}
@@ -169,6 +208,7 @@ def reset_password(session: Session, actor: SessionUser, user_id: int, temporary
     require(actor, Permission.MANAGE_USERS)
     reason = _require_reason(reason)
     user = _get(session, user_id)
+    _require_privilege_for(actor, user.role)  # no taking over a Master Administrator / IT account
     check_new_password(session, None, user.username, temporary_password, get_security_settings(session))
     set_password(session, user, temporary_password, must_change=True)
     was_locked = user.is_locked
@@ -202,10 +242,13 @@ def deactivate_user(session: Session, actor: SessionUser, user_id: int, reason: 
     user = _get(session, user_id)
     if user.id == actor.id:
         raise ValidationError("You cannot deactivate your own account.")
+    _require_privilege_for(actor, user.role)
     if not user.is_active:
         raise ValidationError("This account is already inactive.")
-    if user.role == Role.ADMINISTRATOR and _other_active_admins(session, user.id) == 0:
+    if user.role in ADMIN_ROLES and _other_active_admins(session, user.id) == 0:
         raise ValidationError("At least one active Administrator must remain.")
+    if user.role == Role.MASTER_ADMINISTRATOR and _other_active(session, user.id, [Role.MASTER_ADMINISTRATOR]) == 0:
+        raise ValidationError("At least one active Master Administrator must remain.")
     user.is_active = False
     audit.record(
         session, AuditAction.USER_DEACTIVATED, actor=actor, entity_type="user", entity_id=user.id,
@@ -218,6 +261,7 @@ def reactivate_user(session: Session, actor: SessionUser, user_id: int, reason: 
     require(actor, Permission.MANAGE_USERS)
     reason = _require_reason(reason)
     user = _get(session, user_id)
+    _require_privilege_for(actor, user.role)
     if user.is_active:
         raise ValidationError("This account is already active.")
     user.is_active = True

@@ -176,6 +176,7 @@ def main() -> int:
         db.upgrade()
         with db.session() as session:
             sample_types.seed_defaults(session)
+            users.ensure_master_administrator(session)
     except Exception as exc:  # noqa: BLE001 - shown to the user, then exit
         log.exception("Could not open the database")
         QMessageBox.critical(None, config.APP_NAME, f"Could not open the database:\n\n{exc}")

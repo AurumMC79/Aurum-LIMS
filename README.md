@@ -69,7 +69,7 @@ See [docs/ROADMAP.md](docs/ROADMAP.md) for what could come next.
 | Area | What it does |
 |---|---|
 | Accounts | One account per person. First launch creates the Administrator. Accounts are deactivated, never deleted, so every record stays attributable. |
-| Roles | **Administrator** (users, settings, and drafting methods, specifications, sample types and storage), **QA Reviewer** (approves methods and specifications, closes OOS investigations, manages master data), **Analyst** (registers and handles samples, enters and signs results), **Viewer** (read-only). Administrators cannot approve anything (segregation of duties). |
+| Roles | **Master Administrator** (everything an Administrator does, plus reloading the app; the only role that can give or remove the Master Administrator and IT Support roles; the first-run account), **Administrator** (users, settings, and drafting methods, specifications, sample types and storage), **IT Support** (reloads the app, handles bug reports, read-only access to records and the audit trail), **QA Reviewer** (approves methods and specifications, closes OOS investigations, manages master data), **Analyst** (registers and handles samples, enters and signs results), **Viewer** (read-only). Administrators cannot approve anything (segregation of duties). The last active Master Administrator cannot be removed. |
 | Passwords | Argon2id hashing. Minimum length with a letter and a number. Expiry (default 90 days). Recent passwords cannot be re-used. Temporary passwords must be changed at first sign-in. |
 | Lockout | 5 wrong passwords lock the account until an Administrator unlocks it. |
 | Inactivity | The screen locks after 15 minutes without input and needs the same user's password to continue. A **Lock** button locks it immediately. |
@@ -91,9 +91,9 @@ Then double-click **`scripts\create_desktop_shortcut.bat`** once. It puts an
 start the app from that icon. The shortcut runs the code in this folder, so it
 always starts the latest version.
 
-**Reloading without closing:** the **Reload** button in the top bar (or
-Ctrl+Shift+R) restarts Aurum LIMS with the latest code and runs any database
-upgrade. You stay signed in and return to the same page. The audit trail
+**Reloading without closing (Master Administrators and IT Support only):** the
+**Reload** button in the top bar (or Ctrl+Shift+R) restarts Aurum LIMS with the
+latest code and runs any database upgrade. You stay signed in and return to the same page. The audit trail
 records it as a sign-out followed by a sign-in marked "app reload". When the
 code in this folder changes while the app is open, a banner offers to reload.
 **F5** just refreshes the data on the current page.

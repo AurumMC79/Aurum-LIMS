@@ -15,6 +15,7 @@ from aurum_lims.db.models import AppSetting, PasswordHistory, User, utcnow
 from aurum_lims.errors import NotFound, ValidationError
 from aurum_lims.security import passwords
 from aurum_lims.security.identity import SessionUser
+from aurum_lims.security.roles import Permission, require
 from aurum_lims.services import audit
 from aurum_lims.services.audit import AuditAction
 from aurum_lims.services.settings import SecuritySettings, get_security_settings
@@ -262,7 +263,9 @@ RESUME_LIFETIME = timedelta(seconds=60)
 
 def create_resume_token(session: Session, user: SessionUser) -> str:
     """A single-use code (valid for one minute) that lets the restarted app carry on
-    the same user's session without a password. Only its hash is stored."""
+    the same user's session without a password. Only its hash is stored.
+    Only Master Administrators and IT Support may reload the app."""
+    require(user, Permission.RELOAD_APP)
     token = secrets.token_urlsafe(32)
     digest = hashlib.sha256(token.encode()).hexdigest()
     value = f"{user.id}|{digest}|{(utcnow() + RESUME_LIFETIME).isoformat()}"
@@ -294,7 +297,8 @@ def resume_session(session: Session, token: str | None) -> SessionUser | None:
         return None
     user = session.get(User, int(user_id))
     if user is None or not user.is_active or user.is_locked or user.must_change_password \
-            or password_expired(user, get_security_settings(session)):
+            or password_expired(user, get_security_settings(session)) \
+            or not SessionUser.from_user(user).can(Permission.RELOAD_APP):
         return None
     user.last_login_at = utcnow()
     audit.record(session, AuditAction.LOGIN_SUCCESS, user_id=user.id, username=user.username,

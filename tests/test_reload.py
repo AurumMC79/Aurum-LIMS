@@ -2,7 +2,11 @@
 
 from datetime import timedelta
 
+import pytest
+
 from aurum_lims.db.models import AppSetting, User, utcnow
+from aurum_lims.errors import PermissionDenied
+from aurum_lims.security.roles import Role
 from aurum_lims.services import audit, auth
 from aurum_lims.services.audit import AuditAction
 
@@ -35,12 +39,26 @@ def test_resume_token_rejected_when_wrong_or_expired(db, admin):
 
 
 def test_resume_refused_for_locked_or_inactive_user(db, admin, make_user):
-    analyst = make_user("jsmith")
+    it_user = make_user("it.support", Role.IT_SUPPORT)
     with db.session() as s:
-        token = auth.create_resume_token(s, analyst)
-        s.get(User, analyst.id).is_locked = True
+        token = auth.create_resume_token(s, it_user)
+        s.get(User, it_user.id).is_locked = True
     with db.session() as s:
         assert auth.resume_session(s, token) is None
+
+
+def test_only_master_admin_and_it_support_can_reload(db, admin, make_user):
+    it_user = make_user("it.support", Role.IT_SUPPORT)
+    for role in (Role.ADMINISTRATOR, Role.QA_REVIEWER, Role.ANALYST, Role.VIEWER):
+        other = make_user(f"user.{role.value}", role)
+        with db.session() as s:
+            with pytest.raises(PermissionDenied):
+                auth.create_resume_token(s, other)
+    for allowed in (admin, it_user):  # the first-run account is the Master Administrator
+        with db.session() as s:
+            token = auth.create_resume_token(s, allowed)
+        with db.session() as s:
+            assert auth.resume_session(s, token) == allowed
 
 
 def test_no_token_means_normal_sign_in(db):
@@ -110,6 +128,18 @@ def test_update_banner_and_shortcuts(qtbot, db, admin):
     assert window.update_banner.isHidden()
     window.update_watcher.updated.emit()
     assert not window.update_banner.isHidden()
+    window.sign_out("test")
+
+
+@pytest.mark.parametrize("role, can_reload", [
+    (Role.IT_SUPPORT, True), (Role.ADMINISTRATOR, False), (Role.QA_REVIEWER, False), (Role.ANALYST, False),
+])
+def test_reload_button_only_for_permitted_roles(qtbot, db, admin, make_user, role, can_reload):
+    user = make_user(f"user.{role.value}", role)
+    window = MainWindow(db, user)
+    qtbot.addWidget(window)
+    assert window.reload_button.isHidden() != can_reload
+    assert (window.update_watcher is not None) == can_reload  # no update banner for others
     window.sign_out("test")
 
 

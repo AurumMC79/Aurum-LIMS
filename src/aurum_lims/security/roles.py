@@ -2,6 +2,11 @@
 
 Administrators manage the system but do not review or approve laboratory data
 (segregation of duties). A person who does both needs two accounts.
+
+The Master Administrator is an Administrator who can also reload the app and
+is the only one who can hand out (or take away) the Master Administrator and
+IT Support roles. IT Support maintains the app: reload, bug reports, and
+read-only access for troubleshooting.
 """
 
 from __future__ import annotations
@@ -16,7 +21,9 @@ if TYPE_CHECKING:
 
 
 class Role(StrEnum):
+    MASTER_ADMINISTRATOR = "master_administrator"
     ADMINISTRATOR = "administrator"
+    IT_SUPPORT = "it_support"
     QA_REVIEWER = "qa_reviewer"
     ANALYST = "analyst"
     VIEWER = "viewer"
@@ -27,18 +34,27 @@ class Role(StrEnum):
 
 
 ROLE_LABELS = {
+    Role.MASTER_ADMINISTRATOR: "Master Administrator",
     Role.ADMINISTRATOR: "Administrator",
+    Role.IT_SUPPORT: "IT Support",
     Role.QA_REVIEWER: "QA Reviewer",
     Role.ANALYST: "Analyst",
     Role.VIEWER: "Viewer",
 }
 
 ROLE_DESCRIPTIONS = {
+    Role.MASTER_ADMINISTRATOR: "Everything an Administrator can do, plus reloading the app; the only role that can "
+                               "give or remove the Master Administrator and IT Support roles.",
     Role.ADMINISTRATOR: "Manages user accounts, system settings, sample types and storage; can view the audit trail.",
+    Role.IT_SUPPORT: "Maintains the app: reloads it, handles bug reports, and has read-only access to records and "
+                     "the audit trail for troubleshooting.",
     Role.QA_REVIEWER: "Reviews and approves laboratory records, manages sample types and storage; can view the audit trail.",
     Role.ANALYST: "Registers, receives and handles samples, and signs their own work.",
     Role.VIEWER: "Read-only access to laboratory records.",
 }
+
+# Roles only a Master Administrator may give or take away.
+PRIVILEGED_ROLES = frozenset({Role.MASTER_ADMINISTRATOR, Role.IT_SUPPORT})
 
 
 class Permission(StrEnum):
@@ -57,19 +73,34 @@ class Permission(StrEnum):
     MANAGE_BUG_REPORTS = "manage_bug_reports"
     VIEW_AUDIT_TRAIL = "view_audit_trail"
     EXPORT_AUDIT_TRAIL = "export_audit_trail"
+    # Restart the app in place to load a new version.
+    RELOAD_APP = "reload_app"
+    # Give or remove the Master Administrator and IT Support roles.
+    MANAGE_PRIVILEGED_ROLES = "manage_privileged_roles"
 
+
+_ADMINISTRATOR = frozenset(
+    {
+        Permission.VIEW_RECORDS,
+        Permission.MANAGE_USERS,
+        Permission.MANAGE_SETTINGS,
+        Permission.MANAGE_MASTER_DATA,
+        Permission.MANAGE_DOCUMENTS,
+        Permission.MANAGE_BUG_REPORTS,
+        Permission.VIEW_AUDIT_TRAIL,
+        Permission.EXPORT_AUDIT_TRAIL,
+    }
+)
 
 ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
-    Role.ADMINISTRATOR: frozenset(
+    Role.MASTER_ADMINISTRATOR: _ADMINISTRATOR | {Permission.RELOAD_APP, Permission.MANAGE_PRIVILEGED_ROLES},
+    Role.ADMINISTRATOR: _ADMINISTRATOR,
+    Role.IT_SUPPORT: frozenset(
         {
             Permission.VIEW_RECORDS,
-            Permission.MANAGE_USERS,
-            Permission.MANAGE_SETTINGS,
-            Permission.MANAGE_MASTER_DATA,
-            Permission.MANAGE_DOCUMENTS,
             Permission.MANAGE_BUG_REPORTS,
             Permission.VIEW_AUDIT_TRAIL,
-            Permission.EXPORT_AUDIT_TRAIL,
+            Permission.RELOAD_APP,
         }
     ),
     Role.QA_REVIEWER: frozenset(

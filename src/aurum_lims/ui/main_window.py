@@ -122,11 +122,14 @@ class MainWindow(QMainWindow):
         self.idle = IdleWatcher(QApplication.instance(), timeout, self)
         self.idle.idle.connect(lambda: self._lock("inactivity"))
 
-        # F5 refreshes the page's data; Ctrl+Shift+R reloads the whole app (latest version).
+        # F5 refreshes the page's data. Reloading the whole app (Ctrl+Shift+R, the Reload button
+        # and the update banner) is only for Master Administrators and IT Support.
         QShortcut(QKeySequence("F5"), self, activated=self.refresh_current_page)
-        QShortcut(QKeySequence("Ctrl+Shift+R"), self, activated=self.request_reload)
-        self.update_watcher = UpdateWatcher(self)
-        self.update_watcher.updated.connect(self.update_banner.show)
+        self.update_watcher = None
+        if user.can(Permission.RELOAD_APP):
+            QShortcut(QKeySequence("Ctrl+Shift+R"), self, activated=self.request_reload)
+            self.update_watcher = UpdateWatcher(self)
+            self.update_watcher.updated.connect(self.update_banner.show)
 
     # ----- layout -----
     def _add_page(self, page: QWidget) -> None:
@@ -184,6 +187,8 @@ class MainWindow(QMainWindow):
         reload_button.setToolTip("Restart Aurum LIMS to load the latest version. You stay signed in and come back "
                                  "to this page. (Ctrl+Shift+R)\nPress F5 to just refresh the data on this page.")
         reload_button.clicked.connect(lambda *_: self.request_reload())
+        reload_button.setVisible(self.user.can(Permission.RELOAD_APP))
+        self.reload_button = reload_button
         layout.addWidget(reload_button)
         lock = QPushButton("Lock")
         lock.setToolTip("Lock the screen now (e.g. when stepping away from the bench)")
@@ -220,7 +225,7 @@ class MainWindow(QMainWindow):
 
     def request_reload(self, confirm: bool = True) -> None:
         """Restart the app (latest code) and come back to this page, still signed in."""
-        if self._signing_out:
+        if self._signing_out or not self.user.can(Permission.RELOAD_APP):
             return
         if confirm and QMessageBox.question(
                 self, "Reload Aurum LIMS",

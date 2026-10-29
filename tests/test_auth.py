@@ -21,7 +21,7 @@ def test_successful_login_is_audited(db, admin):
     with db.session() as s:
         result = auth.authenticate(s, "  ADMIN ", ADMIN_PASSWORD)
     assert result.ok
-    assert result.user.role is Role.ADMINISTRATOR
+    assert result.user.role is Role.MASTER_ADMINISTRATOR  # the first-run account
     assert not result.must_change_password
     assert actions(db)[-1] == AuditAction.LOGIN_SUCCESS
 

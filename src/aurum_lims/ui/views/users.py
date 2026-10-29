@@ -26,7 +26,7 @@ from aurum_lims.db import Database
 from aurum_lims.errors import AurumError
 from aurum_lims.security.identity import SessionUser
 from aurum_lims.security.passwords import generate_temporary_password
-from aurum_lims.security.roles import ROLE_DESCRIPTIONS, Role
+from aurum_lims.security.roles import PRIVILEGED_ROLES, ROLE_DESCRIPTIONS, Permission, Role
 from aurum_lims.services import users
 from aurum_lims.ui.common import (
     GridTable,
@@ -64,7 +64,7 @@ class UserRow:
 class UserDialog(QDialog):
     """Create a new user, or edit an existing user's name and role."""
 
-    def __init__(self, parent=None, existing: UserRow | None = None):
+    def __init__(self, parent=None, existing: UserRow | None = None, can_grant_privileged: bool = False):
         super().__init__(parent)
         self.existing = existing
         self.setWindowTitle("Edit user" if existing else "New user")
@@ -75,12 +75,11 @@ class UserDialog(QDialog):
         self.username.setEnabled(existing is None)
         self.full_name = QLineEdit(existing.full_name if existing else "")
         self.role = QComboBox()
+        # Master Administrator and IT Support can only be given by a Master Administrator.
         for role in Role:
-            self.role.addItem(role.label, role)
-        if existing:
-            self.role.setCurrentIndex(list(Role).index(existing.role))
-        else:
-            self.role.setCurrentIndex(list(Role).index(Role.ANALYST))
+            if can_grant_privileged or role not in PRIVILEGED_ROLES or (existing and existing.role == role):
+                self.role.addItem(role.label, role)
+        self.role.setCurrentIndex(max(self.role.findData(existing.role if existing else Role.ANALYST), 0))
         self.role_help = muted_label("")
         self.role.currentIndexChanged.connect(self._update_role_help)
 
@@ -137,6 +136,7 @@ class UsersView(QWidget):
         self.db = db
         self.user = user
         self.rows: list[UserRow] = []
+        self.can_grant_privileged = user.can(Permission.MANAGE_PRIVILEGED_ROLES)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 20, 24, 20)
@@ -210,10 +210,13 @@ class UsersView(QWidget):
 
     def _update_buttons(self) -> None:
         row = self._selected()
-        self.edit_button.setEnabled(row is not None)
-        self.reset_button.setEnabled(row is not None and row.is_active)
+        # Master Administrator / IT Support accounts can only be changed by a Master Administrator
+        # (anyone who manages users may still unlock them, so the lab is never locked out).
+        allowed = row is not None and (row.role not in PRIVILEGED_ROLES or self.can_grant_privileged)
+        self.edit_button.setEnabled(allowed)
+        self.reset_button.setEnabled(allowed and row.is_active)
         self.unlock_button.setEnabled(row is not None and row.is_active and row.is_locked)
-        self.toggle_button.setEnabled(row is not None and row.id != self.user.id)
+        self.toggle_button.setEnabled(allowed and row.id != self.user.id)
         self.toggle_button.setText("Reactivate" if row is not None and not row.is_active else "Deactivate")
 
     def _run(self, action) -> bool:
@@ -228,7 +231,7 @@ class UsersView(QWidget):
 
     # ----- actions -----
     def _create(self) -> None:
-        dialog = UserDialog(self)
+        dialog = UserDialog(self, can_grant_privileged=self.can_grant_privileged)
         while dialog.exec() == QDialog.Accepted:
             password = dialog.password.text()
             try:
@@ -249,7 +252,7 @@ class UsersView(QWidget):
         row = self._selected()
         if row is None:
             return
-        dialog = UserDialog(self, existing=row)
+        dialog = UserDialog(self, existing=row, can_grant_privileged=self.can_grant_privileged)
         # If saving fails (or the reason is cancelled) the window comes back with what was typed.
         while dialog.exec() == QDialog.Accepted:
             reason = ask_reason(self, "Edit user", f"Changing {row.username}.")
