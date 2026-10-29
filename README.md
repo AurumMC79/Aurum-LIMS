@@ -83,9 +83,13 @@ All settings above can be changed by an Administrator on the **Settings** page.
 
 Requires Windows and Python 3.11 or newer ([python.org](https://www.python.org/downloads/)).
 
-Double-click **`scripts\run.bat`**. The first time, it creates a private Python
-environment in `.venv` and installs the dependencies, which needs internet. After
-that it starts the app directly.
+The first time, double-click **`scripts\run.bat`**. It creates a private Python
+environment in `.venv` and installs the dependencies, which needs internet.
+
+Then double-click **`scripts\create_desktop_shortcut.bat`** once. It puts an
+**Aurum LIMS** icon on the desktop and in the Start menu, and from then on you
+start the app from that icon. The shortcut runs the code in this folder, so it
+always starts the latest version.
 
 Or, from a terminal in the project folder:
 

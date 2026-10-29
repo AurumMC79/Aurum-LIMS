@@ -11,6 +11,7 @@ if not exist ".venv\Scripts\python.exe" (
 ".venv\Scripts\python.exe" -m PyInstaller ^
     --noconfirm --clean --windowed ^
     --name AurumLIMS ^
+    --icon "%CD%\src\aurum_lims\ui\aurum.ico" ^
     --specpath build ^
     --paths src ^
     --add-data "%CD%\src\aurum_lims\migrations;aurum_lims\migrations" ^

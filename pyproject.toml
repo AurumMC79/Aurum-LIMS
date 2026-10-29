@@ -32,6 +32,7 @@ where = ["src"]
 [tool.setuptools.package-data]
 aurum_lims = [
     "ui/*.qss",
+    "ui/*.ico",
     "migrations/*.py",
     "migrations/*.mako",
     "migrations/versions/*.py",

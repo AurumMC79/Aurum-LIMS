@@ -111,8 +111,22 @@ def _install_exception_hook() -> None:
     sys.excepthook = hook
 
 
+def _set_windows_app_id() -> None:
+    """Give the process its own taskbar identity, so Windows shows the Aurum icon
+    instead of grouping the window under Python."""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("AurumLIMS.Desktop")
+    except (AttributeError, OSError):
+        pass
+
+
 def main() -> int:
     _configure_logging()
+    _set_windows_app_id()
     app = QApplication(sys.argv)
     app.setApplicationName(config.APP_NAME)
     app.setOrganizationName(config.ORGANIZATION)
