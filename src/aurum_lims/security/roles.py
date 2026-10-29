@@ -98,3 +98,9 @@ def require(user: SessionUser, permission: Permission) -> None:
     """Raise ``PermissionDenied`` unless ``user`` holds ``permission``."""
     if not has_permission(user.role, permission):
         raise PermissionDenied(f"Your role ({Role(user.role).label}) does not allow this action.")
+
+
+def require_any(user: SessionUser, *permissions: Permission) -> None:
+    """Raise ``PermissionDenied`` unless ``user`` holds at least one of ``permissions``."""
+    if not any(has_permission(user.role, p) for p in permissions):
+        raise PermissionDenied(f"Your role ({Role(user.role).label}) does not allow this action.")

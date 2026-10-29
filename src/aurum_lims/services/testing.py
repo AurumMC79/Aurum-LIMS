@@ -367,6 +367,9 @@ def save_values(session: Session, actor: SessionUser, analysis_id: int,
     if sample.status not in TESTABLE:
         raise ValidationError(f"Results cannot be entered while the sample is {sample.status}.")
     params = {p.key: to_spec(p) for p in parameters_of(session, analysis.method_id)}
+    from aurum_lims.services.usage import lot_filled_keys  # local import: usage depends on this module
+
+    lot_filled = lot_filled_keys(session, analysis.method_id)
     existing = {(r.parameter_key, r.replicate): r for r in
                 session.scalars(select(ResultValue).where(ResultValue.analysis_id == analysis.id))}
 
@@ -378,6 +381,8 @@ def save_values(session: Session, actor: SessionUser, analysis_id: int,
         p = params.get(key)
         if p is None or p.calculated or not 1 <= replicate <= p.replicates:
             raise ValidationError(f"'{key}' replicate {replicate} is not an entry field of this method.")
+        if key in lot_filled:
+            raise ValidationError(f"{p.name} is filled in automatically from the {lot_filled[key].label} lot.")
         text = (raw or "").strip()
         label = f"{p.name} #{replicate}" if p.replicates > 1 else p.name
         if text:
@@ -446,6 +451,11 @@ def complete_analysis(session: Session, actor: SessionUser, analysis_id: int, pa
     sample = session.get(Sample, analysis.sample_id)
     if sample.status not in TESTABLE:
         raise ValidationError(f"The sample is {sample.status}.")
+    from aurum_lims.services.usage import readiness_problems  # local import: usage depends on this module
+
+    not_ready = readiness_problems(session, analysis)
+    if not_ready:
+        raise ValidationError("Equipment and materials:\n" + "\n".join(not_ready))
     calc = calculation_for(session, analysis)
     if not calc.complete:
         raise ValidationError("The results are not complete:\n" + "\n".join(calc.problems()))

@@ -482,3 +482,137 @@ class Certificate(Base):
     issued_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     pdf: Mapped[bytes] = mapped_column(LargeBinary)
     sha256: Mapped[str] = mapped_column(String(64))
+
+
+# ---------------------------------------------------------------------------
+# Phase 5: instruments, inventory, and what each test used
+# ---------------------------------------------------------------------------
+
+
+class Instrument(Base):
+    """A piece of laboratory equipment with calibration / maintenance schedules."""
+
+    __tablename__ = "instruments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    code: Mapped[str] = mapped_column(String(40), unique=True)
+    name: Mapped[str] = mapped_column(String(150))
+    category: Mapped[str] = mapped_column(String(40), index=True)
+    manufacturer: Mapped[str | None] = mapped_column(String(100))
+    model: Mapped[str | None] = mapped_column(String(100))
+    serial_number: Mapped[str | None] = mapped_column(String(100))
+    location: Mapped[str | None] = mapped_column(String(150))
+    status: Mapped[str] = mapped_column(String(24))
+    calibration_interval_days: Mapped[int | None] = mapped_column(Integer)
+    maintenance_interval_days: Mapped[int | None] = mapped_column(Integer)
+    calibration_due: Mapped[date | None]
+    maintenance_due: Mapped[date | None]
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+
+
+class InstrumentEvent(Base):
+    """Calibration, maintenance, qualification, repair or status change. Immutable."""
+
+    __tablename__ = "instrument_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    instrument_id: Mapped[int] = mapped_column(ForeignKey("instruments.id"), index=True)
+    event_type: Mapped[str] = mapped_column(String(32))
+    performed_on: Mapped[date]
+    performed_by: Mapped[str | None] = mapped_column(String(150))
+    result: Mapped[str | None] = mapped_column(String(16))
+    certificate_ref: Mapped[str | None] = mapped_column(String(100))
+    next_due: Mapped[date | None]
+    notes: Mapped[str | None] = mapped_column(Text)
+    recorded_at: Mapped[datetime] = mapped_column(default=utcnow)
+    recorded_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+
+
+class InventoryItem(Base):
+    """A catalogue entry: a reagent, reference standard, solvent, column, consumable..."""
+
+    __tablename__ = "inventory_items"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(150))
+    kind: Mapped[str] = mapped_column(String(32), index=True)
+    grade: Mapped[str | None] = mapped_column(String(80))
+    supplier: Mapped[str | None] = mapped_column(String(150))
+    catalogue_number: Mapped[str | None] = mapped_column(String(80))
+    unit: Mapped[str] = mapped_column(String(16))
+    min_stock: Mapped[str | None] = mapped_column(String(32))
+    days_after_opening: Mapped[int | None] = mapped_column(Integer)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+
+
+class InventoryLot(Base):
+    """A received lot of an inventory item, with its stock on hand."""
+
+    __tablename__ = "inventory_lots"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    item_id: Mapped[int] = mapped_column(ForeignKey("inventory_items.id"), index=True)
+    lot_number: Mapped[str] = mapped_column(String(80))
+    internal_id: Mapped[str] = mapped_column(String(32), unique=True)
+    status: Mapped[str] = mapped_column(String(16))
+    received_on: Mapped[date]
+    opened_on: Mapped[date | None]
+    expiry_date: Mapped[date | None]
+    quantity_received: Mapped[str] = mapped_column(String(32))
+    quantity_on_hand: Mapped[str] = mapped_column(String(32))
+    purity: Mapped[str | None] = mapped_column(String(32))
+    certificate_ref: Mapped[str | None] = mapped_column(String(100))
+    location_id: Mapped[int | None] = mapped_column(ForeignKey("storage_locations.id"))
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+
+
+class LotTransaction(Base):
+    """A change to a lot's stock (received, used, adjusted, discarded). Immutable."""
+
+    __tablename__ = "lot_transactions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    lot_id: Mapped[int] = mapped_column(ForeignKey("inventory_lots.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(16))
+    quantity: Mapped[str] = mapped_column(String(32))
+    balance_after: Mapped[str] = mapped_column(String(32))
+    analysis_id: Mapped[int | None] = mapped_column(ForeignKey("analyses.id"))
+    reason: Mapped[str | None] = mapped_column(Text)
+    at: Mapped[datetime] = mapped_column(default=utcnow)
+    by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+
+
+class MethodRequirement(Base):
+    """Equipment or material a method version needs, e.g. 'HPLC' or a reference
+    standard whose purity fills a method input."""
+
+    __tablename__ = "method_requirements"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    method_id: Mapped[int] = mapped_column(ForeignKey("test_methods.id"), index=True)
+    position: Mapped[int] = mapped_column(Integer)
+    kind: Mapped[str] = mapped_column(String(16))
+    category: Mapped[str] = mapped_column(String(40))
+    label: Mapped[str] = mapped_column(String(100))
+    fills_parameter: Mapped[str | None] = mapped_column(String(40))
+
+
+class AnalysisUsage(Base):
+    """An instrument or inventory lot recorded as used on a test."""
+
+    __tablename__ = "analysis_usages"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    analysis_id: Mapped[int] = mapped_column(ForeignKey("analyses.id"), index=True)
+    requirement_id: Mapped[int | None] = mapped_column(ForeignKey("method_requirements.id"))
+    instrument_id: Mapped[int | None] = mapped_column(ForeignKey("instruments.id"))
+    lot_id: Mapped[int | None] = mapped_column(ForeignKey("inventory_lots.id"))
+    quantity_used: Mapped[str | None] = mapped_column(String(32))
+    recorded_at: Mapped[datetime] = mapped_column(default=utcnow)
+    recorded_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
