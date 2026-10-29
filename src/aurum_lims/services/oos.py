@@ -100,8 +100,9 @@ def update(session: Session, actor: SessionUser, oos_id: int, *, phase: str, inv
 
 def close(session: Session, actor: SessionUser, oos_id: int, *, conclusion: str, root_cause: str,
           password: str) -> SignatureResult:
-    """Close with a conclusion (QA electronic signature, meaning 'Approved by')."""
-    require(actor, Permission.REVIEW_RECORDS)
+    """Close with a conclusion (QA electronic signature, meaning 'Approved by').
+    Test reviewers such as Supervisors and Lead Analysts cannot close OOS investigations."""
+    require(actor, Permission.APPROVE_RECORDS)
     record = get(session, actor, oos_id)
     if record.status != OPEN:
         raise ValidationError("This investigation is already closed.")

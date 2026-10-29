@@ -55,8 +55,15 @@ UNITS = ["g", "mg", "kg", "mL", "L", "µL", "units", "vials", "bottles", "column
 ZERO = Decimal(0)
 
 
+INVENTORY_PERMISSIONS = (Permission.EDIT_RECORDS, Permission.MANAGE_MASTER_DATA, Permission.MANAGE_INVENTORY)
+
+
+def can_manage(actor: SessionUser) -> bool:
+    return any(actor.can(p) for p in INVENTORY_PERMISSIONS)
+
+
 def _can_manage(actor: SessionUser) -> None:
-    require_any(actor, Permission.EDIT_RECORDS, Permission.MANAGE_MASTER_DATA)
+    require_any(actor, *INVENTORY_PERMISSIONS)
 
 
 def _clean(value: str | None) -> str | None:

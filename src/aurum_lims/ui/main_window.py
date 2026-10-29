@@ -25,6 +25,7 @@ from aurum_lims.db import Database
 from aurum_lims.security.identity import SessionUser
 from aurum_lims.security.roles import Permission
 from aurum_lims.services import auth
+from aurum_lims.services import review as review_service
 from aurum_lims.services.settings import get_security_settings
 from aurum_lims.ui.common import app_icon, logo_pixmap
 from aurum_lims.ui.lock_screen import IdleWatcher, LockDialog
@@ -73,7 +74,7 @@ class MainWindow(QMainWindow):
         self._add_page(DashboardView(db, user))
         self._add_page(SamplesView(db, user))
         self._add_page(TestingView(db, user))
-        if user.can(Permission.REVIEW_RECORDS):
+        if review_service.can_see_queues(user):
             self._add_page(ReviewView(db, user))
         self._add_page(OOSView(db, user))
         self._add_page(CertificatesView(db, user))

@@ -1,6 +1,6 @@
 """Second-person review of tests and QA's final decision on samples.
 
-1. **Test review** (QA Reviewer, never the person who did the work): each
+1. **Test review** (QA Reviewer, Supervisor or Lead Analyst, never the person who did the work): each
    signed test is accepted with an electronic signature ("Reviewed by") or
    returned to the analyst with a comment. A returned test is corrected,
    signed again (new revision of the results) and comes back for review.
@@ -30,7 +30,7 @@ from aurum_lims.db.models import (
 )
 from aurum_lims.errors import NotFound, ValidationError
 from aurum_lims.security.identity import SessionUser
-from aurum_lims.security.roles import Permission, require
+from aurum_lims.security.roles import Permission, require, require_any
 from aurum_lims.services import audit, certificates, esign, testing
 from aurum_lims.services.audit import AuditAction
 from aurum_lims.services.esign import SignatureMeaning, SignatureResult
@@ -109,8 +109,16 @@ def return_test(session: Session, actor: SessionUser, analysis_id: int, comment:
 # ---------------------------------------------------------------------------
 
 
+QUEUE_PERMISSIONS = (Permission.REVIEW_RECORDS, Permission.APPROVE_RECORDS, Permission.VIEW_REVIEW_QUEUE)
+
+
+def can_see_queues(actor: SessionUser) -> bool:
+    """Reviewers, approvers and managers (view only) can see what is waiting."""
+    return any(actor.can(p) for p in QUEUE_PERMISSIONS)
+
+
 def tests_awaiting_review(session: Session, actor: SessionUser) -> list[testing.AnalysisRow]:
-    require(actor, Permission.REVIEW_RECORDS)
+    require_any(actor, *QUEUE_PERMISSIONS)
     stmt = testing._base().where(Analysis.status == AnalysisStatus.COMPLETE).order_by(
         (Sample.priority == "Urgent").desc(), Analysis.completed_at)
     return testing._rows(session, stmt)
@@ -128,7 +136,7 @@ class SampleForDecision:
 
 
 def samples_awaiting_decision(session: Session, actor: SessionUser) -> list[SampleForDecision]:
-    require(actor, Permission.REVIEW_RECORDS)
+    require_any(actor, *QUEUE_PERMISSIONS)
     rows = session.scalars(select(Sample).where(Sample.status == SampleStatus.REVIEWED)
                            .order_by((Sample.priority == "Urgent").desc(), Sample.updated_at))
     return [SampleForDecision(s.id, s.sample_id, s.material_name or s.sampling_point, s.lot_number, s.priority,

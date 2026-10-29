@@ -94,7 +94,7 @@ class OOSDialog(QDialog):
             save = QPushButton("Save notes")
             save.clicked.connect(lambda *_: self._save())
             buttons.addWidget(save)
-        if is_open and user.can(Permission.REVIEW_RECORDS):
+        if is_open and user.can(Permission.APPROVE_RECORDS):
             close_button = primary_button("Close investigation…")
             close_button.setDefault(False)
             close_button.clicked.connect(lambda *_: self._close_investigation())

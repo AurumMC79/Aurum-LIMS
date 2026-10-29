@@ -101,7 +101,7 @@ class DashboardView(QWidget):
             card.body.addWidget(muted_label(help_text))
             self.sample_cards[key] = (value, None)
             self.grid.addWidget(card, 2, column)
-        self.reviewer = user.can(Permission.REVIEW_RECORDS)
+        self.reviewer = review.can_see_queues(user)
         if self.reviewer:
             for column, (key, title, help_text) in enumerate([
                 ("to_review", "Tests awaiting review", "Signed by the analyst, waiting for second-person review"),

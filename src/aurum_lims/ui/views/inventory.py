@@ -197,7 +197,7 @@ class InventoryView(QWidget):
         self.user = user
         self.lots = []
         self.items = []
-        can_manage = user.can(Permission.EDIT_RECORDS) or user.can(Permission.MANAGE_MASTER_DATA)
+        can_manage = inventory.can_manage(user)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 20, 24, 20)
         layout.setSpacing(10)

@@ -170,7 +170,8 @@ class ReviewView(QWidget):
         layout.addWidget(muted_label("Check the raw values and calculations, then accept (signed) or return the "
                                      "test to the analyst. You cannot review a test you worked on."))
         row = QHBoxLayout()
-        self.review_button = primary_button("Review test…")
+        # Managers see the queues but cannot act on them.
+        self.review_button = primary_button("Review test…" if user.can(Permission.REVIEW_RECORDS) else "View test…")
         self.review_button.setDefault(False)
         self.test_count = muted_label("")
         row.addWidget(self.review_button)
