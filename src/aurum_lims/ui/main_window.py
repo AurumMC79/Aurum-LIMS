@@ -31,6 +31,8 @@ from aurum_lims.ui.views.account import AccountView
 from aurum_lims.ui.views.audit import AuditView
 from aurum_lims.ui.views.certificates import CertificatesView
 from aurum_lims.ui.views.dashboard import DashboardView
+from aurum_lims.ui.views.instruments import InstrumentsView
+from aurum_lims.ui.views.inventory import InventoryView
 from aurum_lims.ui.views.review import ReviewView
 from aurum_lims.ui.views.methods import MethodsView
 from aurum_lims.ui.views.oos import OOSView
@@ -70,6 +72,8 @@ class MainWindow(QMainWindow):
             self._add_page(ReviewView(db, user))
         self._add_page(OOSView(db, user))
         self._add_page(CertificatesView(db, user))
+        self._add_page(InstrumentsView(db, user))
+        self._add_page(InventoryView(db, user))
         self._add_page(StorageView(db, user))
         if user.can(Permission.MANAGE_MASTER_DATA):
             self._add_page(MethodsView(db, user))

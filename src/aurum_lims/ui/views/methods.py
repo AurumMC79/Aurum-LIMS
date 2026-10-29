@@ -30,7 +30,9 @@ from aurum_lims.security.identity import SessionUser
 from aurum_lims.security.roles import Permission
 from aurum_lims.services import methods
 from aurum_lims.services.esign import SignatureMeaning
-from aurum_lims.services.methods import ParameterSpec
+from aurum_lims.services.instruments import CATEGORIES
+from aurum_lims.services.inventory import ItemKind
+from aurum_lims.services.methods import ParameterSpec, RequirementSpec
 from aurum_lims.services.versioning import VersionStatus
 from aurum_lims.ui.common import ask_reason, error_label, format_local, muted_label, primary_button, show_error, show_label_message
 from aurum_lims.ui.sign_dialog import SignDialog
@@ -138,16 +140,102 @@ class ParameterTable(QTableWidget):
         self.selectRow(target)
 
 
+class RequirementTable(QTableWidget):
+    """Equipment and materials a method needs."""
+
+    COLUMNS = ["Needs", "Type / category", "Label (shown to the analyst)", "Fills parameter with lot purity"]
+
+    def __init__(self, requirements: list[RequirementSpec], input_keys, parent=None):
+        super().__init__(0, len(self.COLUMNS), parent)
+        self.input_keys = input_keys  # callable returning the current number-input keys
+        self.setHorizontalHeaderLabels(self.COLUMNS)
+        self.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.setSelectionMode(QAbstractItemView.SingleSelection)
+        header = self.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.Interactive)
+        header.setSectionResizeMode(2, QHeaderView.Stretch)
+        for column, width in enumerate([120, 220, 260]):
+            self.setColumnWidth(column, width)
+        self.setColumnWidth(3, 220)
+        for r in requirements:
+            self.add_row(r)
+
+    def add_row(self, r: RequirementSpec | None = None) -> None:
+        r = r or RequirementSpec("instrument", CATEGORIES[0])
+        row = self.rowCount()
+        self.insertRow(row)
+        kind = QComboBox()
+        kind.addItem("Instrument", "instrument")
+        kind.addItem("Material", "material")
+        kind.setCurrentIndex(0 if r.kind == "instrument" else 1)
+        category = QComboBox()
+        label = QLineEdit(r.label)
+        label.setPlaceholderText("e.g. HPLC system, Aurumex reference standard")
+        fills = QComboBox()
+        for column, widget in enumerate([kind, category, label, fills]):
+            self.setCellWidget(row, column, widget)
+        kind.currentIndexChanged.connect(lambda *_: self._sync(kind))
+        category.currentIndexChanged.connect(lambda *_: self._sync_fills(kind))
+        self._sync(kind, r.category, r.fills_parameter)
+
+    def _row_of(self, kind_combo) -> int:
+        for row in range(self.rowCount()):
+            if self.cellWidget(row, 0) is kind_combo:
+                return row
+        return -1
+
+    def _sync(self, kind_combo, category: str | None = None, fills: str | None = None) -> None:
+        row = self._row_of(kind_combo)
+        if row < 0:
+            return
+        combo = self.cellWidget(row, 1)
+        combo.blockSignals(True)
+        combo.clear()
+        combo.addItems(CATEGORIES if kind_combo.currentData() == "instrument" else [k.value for k in ItemKind])
+        if category:
+            combo.setCurrentText(category)
+        combo.blockSignals(False)
+        self._sync_fills(kind_combo, fills)
+
+    def _sync_fills(self, kind_combo, fills: str | None = None) -> None:
+        row = self._row_of(kind_combo)
+        if row < 0:
+            return
+        combo = self.cellWidget(row, 3)
+        current = fills if fills is not None else combo.currentData()
+        combo.clear()
+        combo.addItem("—", None)
+        standard = (kind_combo.currentData() == "material"
+                    and self.cellWidget(row, 1).currentText() == ItemKind.REFERENCE_STANDARD)
+        if standard:
+            for key in self.input_keys():
+                combo.addItem(key, key)
+            if current:
+                combo.setCurrentIndex(max(combo.findData(current), 0))
+        combo.setEnabled(standard)
+
+    def refresh_keys(self) -> None:
+        for row in range(self.rowCount()):
+            self._sync_fills(self.cellWidget(row, 0))
+
+    def requirements(self) -> list[RequirementSpec]:
+        out = []
+        for row in range(self.rowCount()):
+            kind, category, label, fills = (self.cellWidget(row, c) for c in range(4))
+            out.append(RequirementSpec(kind.currentData(), category.currentText(), label.text(), fills.currentData()))
+        return out
+
+
 class MethodEditorDialog(QDialog):
     def __init__(self, parent=None, method=None, parameters: list[ParameterSpec] | None = None,
-                 read_only: bool = False):
+                 read_only: bool = False, requirements: list[RequirementSpec] | None = None):
         super().__init__(parent)
         self.method = method
         if read_only:
             self.setWindowTitle(f"{method.code} v{method.version} ({method.status}, read-only)")
         else:
             self.setWindowTitle(f"Edit {method.code} v{method.version} (draft)" if method else "New method")
-        self.resize(1000, 620)
+        self.resize(1000, 760)
         layout = QVBoxLayout(self)
         form = QFormLayout()
         self.code = QLineEdit(method.code if method else "")
@@ -183,9 +271,38 @@ class MethodEditorDialog(QDialog):
             row_buttons.addWidget(button)
         row_buttons.addStretch()
         layout.addLayout(row_buttons)
+
+        layout.addWidget(QLabel("<b>Equipment and materials required</b>  <span style='color:#6b7785'>The test "
+                                "cannot be signed until each is recorded. A reference standard can fill a number "
+                                "input (e.g. purity_std) with the lot's certified purity.</span>"))
+        self.requirements = RequirementTable(
+            requirements or [],
+            lambda: [p.key.strip().lower() for p in self.table.parameters()
+                     if p.kind == "input" and p.key.strip() and p.replicates == 1],
+        )
+        self.requirements.setMaximumHeight(150)
+        layout.addWidget(self.requirements)
+        req_buttons = QHBoxLayout()
+        add_req = QPushButton("Add requirement")
+        add_req.clicked.connect(lambda *_: self.requirements.add_row())
+        remove_req = QPushButton("Remove requirement")
+        remove_req.clicked.connect(lambda *_: self.requirements.currentRow() >= 0
+                                   and self.requirements.removeRow(self.requirements.currentRow()))
+        refresh_keys = QPushButton("Refresh parameter list")
+        refresh_keys.setToolTip("Update the 'fills parameter' choices after editing parameters above")
+        refresh_keys.clicked.connect(lambda *_: self.requirements.refresh_keys())
+        for b in (add_req, remove_req, refresh_keys):
+            b.setEnabled(not read_only)
+            req_buttons.addWidget(b)
+        req_buttons.addStretch()
+        layout.addLayout(req_buttons)
+
         self.error = error_label()
         layout.addWidget(self.error)
         if read_only:
+            for row in range(self.requirements.rowCount()):
+                for column in range(self.requirements.columnCount()):
+                    self.requirements.cellWidget(row, column).setEnabled(False)
             for widget in (self.name, self.sop, self.description):
                 widget.setEnabled(False)
             for row in range(self.table.rowCount()):
@@ -207,7 +324,8 @@ class MethodEditorDialog(QDialog):
 
     def _check(self) -> None:
         try:
-            methods.validate_parameters(self.table.parameters())
+            params = methods.validate_parameters(self.table.parameters())
+            methods.validate_requirements(self.requirements.requirements(), params)
         except AurumError as exc:
             show_label_message(self.error, str(exc))
             return
@@ -215,7 +333,8 @@ class MethodEditorDialog(QDialog):
 
     def values(self) -> dict:
         return {"name": self.name.text(), "parameters": self.table.parameters(),
-                "sop_reference": self.sop.text(), "description": self.description.toPlainText()}
+                "sop_reference": self.sop.text(), "description": self.description.toPlainText(),
+                "requirements": self.requirements.requirements()}
 
 
 class MethodsView(QWidget):
@@ -227,6 +346,7 @@ class MethodsView(QWidget):
         self.db = db
         self.user = user
         self.rows = []
+        self.requirements: dict[int, list[RequirementSpec]] = {}
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 20, 24, 20)
         layout.setSpacing(12)
@@ -277,6 +397,8 @@ class MethodsView(QWidget):
         with self.db.session() as session:
             rows = methods.list_methods(session, include_retired=self.show_retired.isChecked())
             self.rows = [(m, [methods.to_spec(p) for p in methods.parameters_of(session, m.id)]) for m in rows]
+            self.requirements = {m.id: [methods.to_requirement(r) for r in methods.requirements_of(session, m.id)]
+                                 for m in rows}
         self.table.setRowCount(len(self.rows))
         for r, (m, params) in enumerate(self.rows):
             values = [m.code, f"v{m.version}", m.name, m.sop_reference or "", str(len(params)), m.status,
@@ -305,7 +427,8 @@ class MethodsView(QWidget):
             summary = "; ".join(
                 f"{p.name} [{p.key}]" + (f" = {p.formula}" if p.formula else "")
                 + (f" ×{p.replicates}" if p.replicates > 1 else "") for p in params)
-            self.detail.setText(f"{method.code} v{method.version}: {summary}")
+            needs = ", ".join(r.label for r in self.requirements.get(method.id, []))
+            self.detail.setText(f"{method.code} v{method.version}: {summary}" + (f"\nNeeds: {needs}" if needs else ""))
         else:
             self.detail.setText("")
 
@@ -329,7 +452,8 @@ class MethodsView(QWidget):
         method, params = self._selected()
         if method is None:
             return
-        dialog = MethodEditorDialog(self, method, params, read_only=method.status != VersionStatus.DRAFT)
+        dialog = MethodEditorDialog(self, method, params, read_only=method.status != VersionStatus.DRAFT,
+                                    requirements=self.requirements.get(method.id, []))
         if method.status != VersionStatus.DRAFT:
             dialog.exec()
             return

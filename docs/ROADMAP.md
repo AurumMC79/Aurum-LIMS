@@ -44,11 +44,14 @@ Phase 1: user accounts, roles, the audit trail and electronic signatures.
 - Laboratory details for the certificate header; decided samples locked
 - Not yet: amended certificates (re-issue after a post-approval correction), bulk/batch release
 
-## Phase 5: Instruments and inventory
-- Instrument register, calibration and maintenance schedules with due-date warnings
-- Block use of instruments that are out of calibration
-- Reagents, reference standards and consumables: lots, expiry, opened dates, stock levels
-- Link results to the instrument and reagent lots used
+## Phase 5: Instruments and inventory ✅
+- Instrument register with calibration / maintenance intervals and due dates; immutable event history
+- Failed calibrations or checks take instruments out of service; overdue or out-of-service instruments are blocked
+- Inventory catalogue and lots with expiry, opened date, days-after-opening, certified purity and stock on hand;
+  immutable stock movements; low-stock and expiry warnings
+- Methods list required equipment and materials; tests can't be signed until they are recorded and valid
+- Reference standard purity filled into calculations from the lot certificate
+- Not yet: preventive-maintenance task lists, label printing for lots, supplier management
 
 ## Later
 - Instrument data import (CSV/TXT exports from HPLC, GC, balances, pH meters, etc.)

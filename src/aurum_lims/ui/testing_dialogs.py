@@ -34,13 +34,14 @@ from aurum_lims.db.models import Analysis, Sample, Specification, TestMethod, Us
 from aurum_lims.errors import AurumError
 from aurum_lims.security.identity import SessionUser
 from aurum_lims.security.roles import Permission, has_permission
-from aurum_lims.services import formulas, methods, review, specifications, testing
+from aurum_lims.services import formulas, methods, review, specifications, testing, usage
 from aurum_lims.services.esign import SignatureMeaning
 from aurum_lims.services.formulas import Conformance
 from aurum_lims.services.methods import ResultType, to_spec
 from aurum_lims.services.testing import OPEN_ANALYSIS, AnalysisStatus, Calculation
 from aurum_lims.ui.common import Card, ask_reason, error_label, format_local, muted_label, show_error, show_label_message
 from aurum_lims.ui.sign_dialog import SignDialog
+from aurum_lims.ui.usage_widgets import RecordUsageDialog, usage_table
 
 CONFORMANCE_COLORS = {Conformance.PASS: "#067647", Conformance.FAIL: "#b42318", Conformance.REPORT: "#4a5562"}
 
@@ -161,7 +162,10 @@ class ResultEntryDialog(QDialog):
         super().__init__(parent)
         self.db, self.user, self.analysis_id = db, user, analysis_id
         self.review_mode = review_mode
-        self.resize(980, 720)
+        self.resize(980, 760)
+        self._outer = QVBoxLayout(self)
+        self._outer.setContentsMargins(0, 0, 0, 0)
+        self._container: QWidget | None = None
         self._load()
 
     # ----- data -----
@@ -191,14 +195,22 @@ class ResultEntryDialog(QDialog):
                                 if analysis.status == AnalysisStatus.RETURNED else "")
             self.sample_id = sample.sample_id
             self.method_label = f"{method.code} v{method.version}"
+            self.method_id = method.id
+            self.requirements = methods.requirements_of(session, method.id)
+            self.usages = usage.usages_for(session, analysis.id)
+            self.lot_filled = {key: r.label for key, r in usage.lot_filled_keys(session, method.id).items()}
         self.editable = self.status in OPEN_ANALYSIS and self.user.can(Permission.EDIT_RECORDS)
         self.setWindowTitle(f"Results – {self.sample_id} – {self.method_label}")
         self._build()
 
     def _build(self) -> None:
-        if self.layout() is not None:
-            QWidget().setLayout(self.layout())  # discard the old layout and its widgets
-        layout = QVBoxLayout(self)
+        # Everything lives in one container so the window can be rebuilt after recording equipment.
+        if self._container is not None:
+            self._outer.removeWidget(self._container)
+            self._container.deleteLater()
+        self._container = QWidget(self)
+        self._outer.addWidget(self._container)
+        layout = QVBoxLayout(self._container)
         title = QLabel(self.header)
         title.setObjectName("CardTitle")
         layout.addWidget(title)
@@ -208,6 +220,23 @@ class ResultEntryDialog(QDialog):
             banner.setObjectName("Banner")
             banner.setWordWrap(True)
             layout.addWidget(banner)
+
+        if self.requirements or self.usages or self.editable:
+            equipment = Card("Equipment and materials used")
+            self.usage_table = usage_table(self.requirements, self.usages)
+            equipment.body.addWidget(self.usage_table)
+            if self.editable:
+                row = QHBoxLayout()
+                for text, kind in (("Record instrument…", "instrument"), ("Record lot…", "material")):
+                    button = QPushButton(text)
+                    button.clicked.connect(lambda *_, k=kind: self._record_usage(k))
+                    row.addWidget(button)
+                remove = QPushButton("Remove selected…")
+                remove.clicked.connect(lambda *_: self._remove_usage())
+                row.addWidget(remove)
+                row.addStretch()
+                equipment.body.addLayout(row)
+            layout.addWidget(equipment)
 
         self.fields: dict[tuple[str, int], QWidget] = {}
         self.calc_labels: dict[tuple[str, int], QLabel] = {}
@@ -236,6 +265,14 @@ class ResultEntryDialog(QDialog):
                     widget.currentIndexChanged.connect(lambda *_: self._recalculate())
                     widget.setEnabled(self.editable)
                     self.fields[(p.key, i)] = widget
+                elif p.key in self.lot_filled:
+                    # Filled from the reference standard lot; never typed by hand.
+                    widget = QLineEdit(self.stored.get((p.key, i), ""))
+                    widget.setAlignment(Qt.AlignRight)
+                    widget.setReadOnly(True)
+                    widget.setPlaceholderText("record the lot")
+                    widget.setStyleSheet("background:#f3ecd6")
+                    widget.setToolTip(f"Filled automatically from the {self.lot_filled[p.key]} lot's certificate")
                 else:
                     widget = QLineEdit(self.stored.get((p.key, i), ""))
                     if p.result_type == ResultType.NUMERIC:
@@ -296,14 +333,39 @@ class ResultEntryDialog(QDialog):
         self._recalculate()
 
     def _current_values(self) -> dict[tuple[str, int], str]:
-        out = {}
+        out = {(key, 1): self.stored[(key, 1)] for key in self.lot_filled if (key, 1) in self.stored}
         for key, widget in self.fields.items():
             out[key] = widget.currentText() if isinstance(widget, QComboBox) else widget.text()
         return out
 
     def _dirty(self) -> dict[tuple[str, int], str]:
         current = self._current_values()
-        return {k: v for k, v in current.items() if v.strip() != self.stored.get(k, "")}
+        return {k: v for k, v in current.items() if k[0] not in self.lot_filled and v.strip() != self.stored.get(k, "")}
+
+    def _record_usage(self, kind: str) -> None:
+        if self._dirty() and not self._save():
+            return
+        if RecordUsageDialog(self.db, self.user, self.analysis_id, self.method_id, kind, self).exec() == QDialog.Accepted:
+            self._load()
+
+    def _remove_usage(self) -> None:
+        rows = self.usage_table.selectionModel().selectedRows()
+        usage_id = self.usage_table.usage_ids[rows[0].row()] if rows else None
+        if usage_id is None:
+            show_label_message(self.error, "Select a recorded instrument or lot to remove.")
+            return
+        if self._dirty() and not self._save():
+            return
+        reason = ask_reason(self, "Remove", "Remove this instrument / lot from the test? Any stock taken is put back.")
+        if reason is None:
+            return
+        try:
+            with self.db.session() as session:
+                usage.remove_usage(session, self.user, usage_id, reason)
+        except AurumError as exc:
+            show_error(self, exc)
+            return
+        self._load()
 
     def _recalculate(self) -> None:
         if not self.editable and self.frozen:
@@ -331,12 +393,15 @@ class ResultEntryDialog(QDialog):
             ]
             self._fill_row(r, values, p.conformance)
         problems = calc.problems()
+        covered = {u.requirement_id for u in self.usages if u.requirement_id}
+        problems += [f"record the {r.label} used" for r in self.requirements if r.id not in covered]
+        problems += [p for u in self.usages for p in u.problems]
         self.problems.setText("Still needed: " + "; ".join(problems) if problems else
                               ("All results calculated." + (f"  {len(calc.failures)} result(s) OUT OF SPECIFICATION."
                                                             if calc.failures else "")))
         self.problems.setStyleSheet("color:#b42318" if calc.failures else "")
         if self.editable:
-            self.complete_button.setEnabled(calc.complete)
+            self.complete_button.setEnabled(calc.complete and not problems)
 
     def _show_frozen(self) -> None:
         self.summary.setRowCount(len(self.frozen))

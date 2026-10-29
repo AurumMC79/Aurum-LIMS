@@ -137,12 +137,10 @@ def list_instruments(session: Session, include_retired: bool = False, category: 
 
 
 def due_soon(session: Session, within_days: int = 14) -> tuple[list[Instrument], list[Instrument]]:
-    """(overdue or never done, due within ``within_days``) for instruments in service."""
+    """(out of service, overdue or never done; due within ``within_days``). Retired ones are ignored."""
     today = date.today()
     overdue, soon = [], []
     for instrument in list_instruments(session):
-        if instrument.status != InstrumentStatus.IN_SERVICE:
-            continue
         if problems(instrument, today):
             overdue.append(instrument)
             continue

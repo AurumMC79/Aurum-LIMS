@@ -3,9 +3,25 @@
 A Laboratory Information Management System for QC and regulated laboratories
 (GMP, ISO/IEC 17025), built as a Windows desktop application.
 
-**Status:** Phases 1–4 are complete: foundation; samples and chain of custody;
-methods, specifications, results and OOS; and review, approval and certificates.
-Instruments and inventory come next. See [docs/ROADMAP.md](docs/ROADMAP.md).
+**Status:** Phases 1–5 are complete:
+1. Foundation
+2. Samples and chain of custody
+3. Methods, specifications, results and OOS
+4. Review, approval and certificates
+5. Instruments and inventory
+
+See [docs/ROADMAP.md](docs/ROADMAP.md) for what could come next.
+
+## Instruments and inventory (Phase 5)
+
+| Area | What it does |
+|---|---|
+| Instruments | Register equipment (ID, category, make, model, serial number, location) with calibration and maintenance intervals. Calibrations, maintenance, qualifications, performance checks, repairs and status changes are recorded as a permanent history. The next due date is calculated from the interval. A **failed** calibration or check takes the instrument **out of service** automatically. |
+| Usable instruments | An instrument can be recorded on a test only while it is in service and its calibration and maintenance are not overdue. This is checked again when the analyst signs. |
+| Inventory | A catalogue of reagents, reference standards, solvents, columns and consumables. Each received lot gets an internal ID (`LOT-YYYY-NNNN`) and records the supplier lot number, received / opened / expiry dates, certificate reference, certified purity, storage location and quantity on hand. "Use within N days of opening" shortens the expiry automatically. Every stock movement (received, used, returned, adjusted, discarded) is permanently recorded. |
+| Method requirements | Each method lists the equipment and materials it needs, e.g. *HPLC system*, *Analytical balance*, *Aurumex reference standard*. A test **cannot be signed** until each one is recorded. Instruments of the wrong category, overdue or out of service, and lots that are expired, discarded or empty, are refused. |
+| Standard purity | A reference-standard requirement can fill a method input (e.g. `purity_std`) with the lot's **certified purity**. The value is never typed by hand, so the calculation always uses the certificate value. |
+| Stock | The quantity used on a test is taken out of the lot's stock (and put back if the entry is removed). Items have a minimum stock level; the dashboard shows low stock, lots that are expired or about to expire, and instruments that need attention. |
 
 ## Review, approval and certificates (Phase 4)
 

@@ -76,6 +76,11 @@ def test_overdue_and_never_calibrated(db, admin):
         assert "no calibration" in instruments.problems(instruments.get(s, never))[0]
         late, _ = instruments.due_soon(s)
         assert {i.code for i in late} == {"BAL-01", "PH-01"}
+        instruments.record_event(s, admin, overdue, event_type=EventType.RETIRED, performed_on=TODAY,
+                                 notes="Replaced")
+    with db.session() as s:
+        late, _ = instruments.due_soon(s)
+        assert {i.code for i in late} == {"PH-01"}  # retired instruments are ignored
 
 
 def test_instrument_events_immutable(db, admin):

@@ -10,7 +10,7 @@ from aurum_lims.db import Database
 from aurum_lims.db.models import User
 from aurum_lims.security.identity import SessionUser
 from aurum_lims.security.roles import ROLE_DESCRIPTIONS, Permission
-from aurum_lims.services import auth, oos, review, samples, testing, users
+from aurum_lims.services import auth, instruments, inventory, oos, review, samples, testing, users
 from aurum_lims.services.samples import ON_HAND_STATUSES, SampleStatus
 from aurum_lims.services.testing import AnalysisStatus
 from aurum_lims.ui.common import Card, format_local, muted_label
@@ -115,15 +115,26 @@ class DashboardView(QWidget):
                 self.sample_cards[key] = (value, None)
                 self.grid.addWidget(card, 3, column)
 
-        roadmap = Card("Coming next")
-        roadmap.body.addWidget(
-            muted_label(
-                "Phase 5 adds instruments with calibration and maintenance schedules, and reagent and reference "
-                "standard lots with expiry dates, linked to the tests they were used in."
-            )
-        )
-        layout.addWidget(roadmap)
+        for column, (key, title, help_text) in enumerate([
+            ("instruments", "Instruments needing attention", ""),
+            ("lots", "Lots expired or expiring", ""),
+            ("low_stock", "Items low on stock", "Usable stock below the minimum"),
+        ]):
+            card = Card(title)
+            value = QLabel("0")
+            value.setObjectName("CardValue")
+            detail = muted_label(help_text)
+            card.body.addWidget(value)
+            card.body.addWidget(detail)
+            self.sample_cards[key] = (value, detail)
+            self.grid.addWidget(card, 4, column)
         layout.addStretch()
+
+    def _attention(self, key: str, count: int, detail: str) -> None:
+        value, detail_label = self.sample_cards[key]
+        value.setText(str(count))
+        value.setStyleSheet("color:#b42318" if count else "")
+        detail_label.setText(detail)
 
     def refresh(self) -> None:
         self.greeting.setText(f"{_greeting()}, {self.user.full_name.split()[0]}")
@@ -136,10 +147,20 @@ class DashboardView(QWidget):
             overdue, due_soon = samples.due_counts(session)
             tests = testing.open_counts(session)
             open_oos = oos.open_count(session)
+            late_instruments, soon_instruments = instruments.due_soon(session)
+            expired_lots, expiring_lots = inventory.expiring(session)
+            low = inventory.low_stock(session)
             if self.reviewer:
                 self.sample_cards["to_review"][0].setText(str(len(review.tests_awaiting_review(session, self.user))))
                 self.sample_cards["to_decide"][0].setText(
                     str(len(review.samples_awaiting_decision(session, self.user))))
+        self._attention("instruments", len(late_instruments),
+                        f"{len(late_instruments)} overdue or out of service · {len(soon_instruments)} due in 14 days"
+                        + (": " + ", ".join(i.code for i in late_instruments[:4]) if late_instruments else ""))
+        self._attention("lots", len(expired_lots),
+                        f"{len(expired_lots)} expired · {len(expiring_lots)} expire within 30 days")
+        self._attention("low_stock", len(low), ", ".join(item.name for item, _ in low[:3]) or
+                        "Usable stock below the minimum")
         self.sample_cards["pending"][0].setText(str(tests.get(AnalysisStatus.PENDING, 0)))
         self.sample_cards["in_progress"][0].setText(str(tests.get(AnalysisStatus.IN_PROGRESS, 0)))
         self.sample_cards["oos"][0].setText(str(open_oos))
