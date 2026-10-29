@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QBuffer, QByteArray, QIODevice, Qt
+from PySide6.QtCore import QBuffer, QByteArray, QEvent, QIODevice, Qt
 from PySide6.QtGui import QColor, QGuiApplication, QImage, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -110,7 +110,8 @@ class StatusDialog(QDialog):
 
 
 class BugReportTab(QWidget):
-    COLUMNS = ["Number", "Title", "Area", "Severity", "Status", "Reported by", "Reported"]
+    # Area, reporter and full details are in the View window (and tooltips), so the list fits beside the form.
+    COLUMNS = ["Number", "Title", "Severity", "Status", "Reported"]
 
     def __init__(self, db: Database, user: SessionUser, parent=None):
         super().__init__(parent)
@@ -165,13 +166,17 @@ class BugReportTab(QWidget):
         choose.clicked.connect(lambda *_: self._choose())
         self.clear_shot = QPushButton("Remove")
         self.clear_shot.clicked.connect(lambda *_: self._set_screenshot(None))
-        for b in (paste, choose, self.clear_shot):
+        for b in (paste, choose):
             shot_row.addWidget(b)
         shot_row.addStretch()
         form.addRow("Screenshot", shot_row)
         self.preview = QLabel()
         self.preview.setObjectName("Muted")
-        form.addRow("", self.preview)
+        preview_row = QHBoxLayout()
+        preview_row.addWidget(self.preview)
+        preview_row.addWidget(self.clear_shot)
+        preview_row.addStretch()
+        form.addRow("", preview_row)
         form_card.body.addLayout(form)
         self.error = error_label()
         form_card.body.addWidget(self.error)
@@ -182,17 +187,21 @@ class BugReportTab(QWidget):
         submit.clicked.connect(lambda *_: self._submit())
         submit_row.addWidget(submit)
         form_card.body.addLayout(submit_row)
-        form_scroll = QScrollArea()
-        form_scroll.setWidgetResizable(True)
-        form_scroll.setFrameShape(QScrollArea.NoFrame)
-        form_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        form_scroll.setWidget(form_card)
-        splitter.addWidget(form_scroll)
+        self.form_card = form_card
+        self.form_scroll = QScrollArea()
+        self.form_scroll.setWidgetResizable(True)
+        self.form_scroll.setFrameShape(QScrollArea.NoFrame)
+        self.form_scroll.setWidget(form_card)
+        # BUG-0002: never let the splitter squeeze the form narrower than its fields
+        # (it used to be clipped on the right). The list takes the remaining space.
+        self.form_scroll.setMinimumWidth(
+            form_card.minimumSizeHint().width() + self.form_scroll.verticalScrollBar().sizeHint().width())
+        splitter.addWidget(self.form_scroll)
 
         # ----- the list -----
         list_box = QWidget()
         list_layout = QVBoxLayout(list_box)
-        list_layout.setContentsMargins(12, 0, 0, 0)
+        list_layout.setContentsMargins(6, 0, 0, 0)
         heading = QLabel("<b>All bug reports</b>" if self.can_manage else "<b>My bug reports</b>")
         list_layout.addWidget(heading)
         buttons = QHBoxLayout()
@@ -210,30 +219,65 @@ class BugReportTab(QWidget):
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setAlternatingRowColors(True)
         self.table.verticalHeader().hide()
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-        self.table.horizontalHeader().setMinimumSectionSize(60)
-        if not self.can_manage:
-            self.table.setColumnHidden(self.COLUMNS.index("Reported by"), True)  # always yourself
+        self.table.setWordWrap(False)
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(self.COLUMNS.index("Title"), QHeaderView.Stretch)
+        header.setMinimumSectionSize(32)  # the Title column shrinks first on narrow windows (full title in tooltip)
         self.table.doubleClicked.connect(lambda *_: self._view())
         self.table.itemSelectionChanged.connect(self._update_buttons)
         list_layout.addWidget(self.table, 1)
         splitter.addWidget(list_box)
-        splitter.setSizes([560, 520])
         splitter.setChildrenCollapsible(False)
+        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(1, 1)
+        # Start with the form at the width it needs and give the list everything else;
+        # the divider can still be dragged.
+        splitter.setSizes([self.form_scroll.minimumWidth(), 10_000])
+        self.splitter = splitter
+        list_box.installEventFilter(self)  # show / hide the date column whenever the list changes width
 
         self.view_button.clicked.connect(lambda *_: self._view())
         self.status_button.clicked.connect(lambda *_: self._update_status())
         self._set_screenshot(None)
         self._update_buttons()
 
+    # ----- layout -----
+    TITLE_ROOM = 110  # pixels the Title column should keep before the date column is given up
+
+    def _needed_width(self, with_date: bool = True, title_room: int | None = None) -> int:
+        """Width the table needs to show its columns without a sideways scroll bar."""
+        header = self.table.horizontalHeader()
+        skip = {self.COLUMNS.index("Title")} | (set() if with_date else {self.COLUMNS.index("Reported")})
+        needed = 2 * self.table.frameWidth() + (self.TITLE_ROOM if title_room is None else title_room)
+        for column in range(len(self.COLUMNS)):
+            if column not in skip:
+                needed += max(header.sectionSizeHint(column), self.table.sizeHintForColumn(column))
+        if self.table.verticalScrollBar().isVisible():
+            needed += self.table.verticalScrollBar().width()
+        return needed
+
+    def _fit_columns(self) -> None:
+        # The list may never be narrower than its essential columns (so nothing is ever cut off);
+        # on narrow windows the date column makes way (the date is in the tooltip and the View window).
+        list_box = self.splitter.widget(1)
+        margins = list_box.layout().contentsMargins()
+        minimum = self._needed_width(with_date=False, title_room=self.table.horizontalHeader().minimumSectionSize())
+        list_box.setMinimumWidth(max(260, minimum + margins.left() + margins.right()))
+        self.table.setColumnHidden(self.COLUMNS.index("Reported"), self.table.width() < self._needed_width())
+
+    def eventFilter(self, watched, event) -> bool:
+        if watched is self.splitter.widget(1) and event.type() == QEvent.Resize:
+            self._fit_columns()
+        return super().eventFilter(watched, event)
+
     # ----- screenshot -----
     def _set_screenshot(self, data: bytes | None) -> None:
         self.screenshot = data
         self.clear_shot.setEnabled(data is not None)
         if data is None:
+            self.preview.clear()  # setPixmap() would also wipe the text, so clear first
             self.preview.setText("No screenshot attached")
-            self.preview.setPixmap(QPixmap())
             return
         pixmap = QPixmap()
         pixmap.loadFromData(data)
@@ -263,15 +307,22 @@ class BugReportTab(QWidget):
             self.rows = bug_reports.list_reports(session, self.user)
         self.table.setRowCount(len(self.rows))
         for r, row in enumerate(self.rows):
-            values = [row.number, row.title, row.area, row.severity, row.status, row.reported_by,
-                      format_local(row.reported_at)]
+            values = [row.number, row.title, row.severity, row.status,
+                      row.reported_at.astimezone().strftime("%Y-%m-%d")]
             for c, value in enumerate(values):
                 item = QTableWidgetItem(value)
-                if c == 4:
+                column = self.COLUMNS[c]
+                if column == "Title":
+                    item.setToolTip(f"{row.title}\nWhere: {row.area}\nReported by: {row.reported_by} on "
+                                    f"{format_local(row.reported_at)}")
+                if column == "Status":
                     item.setForeground(QColor(STATUS_COLORS.get(row.status, "#1f2933")))
-                if c == 3 and row.severity in ("High", "Critical"):
+                if column == "Severity" and row.severity in ("High", "Critical"):
                     item.setForeground(QColor("#b42318"))
+                if column == "Reported":
+                    item.setToolTip(format_local(row.reported_at))
                 self.table.setItem(r, c, item)
+        self._fit_columns()
         self._update_buttons()
 
     def _selected(self) -> bug_reports.BugRow | None:
