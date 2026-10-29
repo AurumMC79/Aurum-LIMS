@@ -154,7 +154,10 @@ def fill_location_combo(combo: QComboBox, location_paths: list[tuple[int, str]],
 
 
 def open_pdf(name: str, data: bytes) -> Path:
-    """Write a PDF to a temporary folder and open it in the default PDF viewer."""
+    """Write a PDF to a temporary folder (read-only) and open it in the default PDF viewer."""
+    import os
+    import re
+    import stat
     import tempfile
 
     from PySide6.QtCore import QUrl
@@ -162,8 +165,16 @@ def open_pdf(name: str, data: bytes) -> Path:
 
     folder = Path(tempfile.gettempdir()) / "AurumLIMS"
     folder.mkdir(parents=True, exist_ok=True)
-    path = folder / f"{name}.pdf"
-    path.write_bytes(data)
+    path = folder / (re.sub(r'[\\/:*?"<>|]+', "_", name) + ".pdf")
+    if path.exists():
+        os.chmod(path, stat.S_IWRITE | stat.S_IREAD)
+    try:
+        path.write_bytes(data)
+    except PermissionError:
+        # Still open in a PDF viewer; use a fresh name instead.
+        path = path.with_name(f"{path.stem} ({datetime.now():%H%M%S}).pdf")
+        path.write_bytes(data)
+    os.chmod(path, stat.S_IREAD)
     QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
     return path
 

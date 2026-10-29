@@ -1,4 +1,4 @@
-"""Security settings page (Administrators only)."""
+"""Settings page: security and laboratory details (Administrators) and Report a bug (everyone)."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QScrollArea,
     QSpinBox,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -22,9 +23,27 @@ from aurum_lims import config
 from aurum_lims.db import Database
 from aurum_lims.errors import AurumError
 from aurum_lims.security.identity import SessionUser
+from aurum_lims.security.roles import Permission
 from aurum_lims.services.lab_info import PAPER_SIZES, LabInfo, get_lab_info, set_lab_info
 from aurum_lims.services.settings import SETTING_INFO, get_security_settings, update_security_settings
 from aurum_lims.ui.common import Card, ask_reason, muted_label, primary_button, show_error
+from aurum_lims.ui.views.bug_report import BugReportTab
+
+
+def _scrolling(*widgets: QWidget) -> QScrollArea:
+    scroll = QScrollArea()
+    scroll.setWidgetResizable(True)
+    scroll.setFrameShape(QScrollArea.NoFrame)
+    content = QWidget()
+    content.setObjectName("Content")
+    layout = QVBoxLayout(content)
+    layout.setContentsMargins(4, 12, 4, 12)
+    layout.setSpacing(16)
+    for widget in widgets:
+        layout.addWidget(widget)
+    layout.addStretch()
+    scroll.setWidget(content)
+    return scroll
 
 
 class SettingsView(QWidget):
@@ -36,20 +55,20 @@ class SettingsView(QWidget):
         self.db = db
         self.user = user
         self.current: dict[str, int] = {}
+        self.is_admin = user.can(Permission.MANAGE_SETTINGS)
 
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QScrollArea.NoFrame)
-        content = QWidget()
-        content.setObjectName("Content")
-        scroll.setWidget(content)
-        outer.addWidget(scroll)
-        layout = QVBoxLayout(content)
-        layout.setContentsMargins(24, 20, 24, 20)
-        layout.setSpacing(16)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 16, 24, 16)
+        self.tabs = QTabWidget()
+        layout.addWidget(self.tabs)
+        if self.is_admin:
+            self.tabs.addTab(_scrolling(self._security_card(), self._storage_card()), "Security")
+            self.tabs.addTab(_scrolling(self._lab_card()), "Laboratory details")
+        self.bug_tab = BugReportTab(db, user)
+        self.tabs.addTab(self.bug_tab, "Report a bug")
 
+    # ----- building -----
+    def _security_card(self) -> Card:
         card = Card("Security")
         form = QFormLayout()
         form.setVerticalSpacing(4)
@@ -65,13 +84,14 @@ class SettingsView(QWidget):
         buttons = QHBoxLayout()
         buttons.addStretch()
         save = primary_button("Save changes")
-        save.clicked.connect(self._save)
+        save.clicked.connect(lambda *_: self._save())
         buttons.addWidget(save)
         card.body.addLayout(buttons)
-        layout.addWidget(card)
+        return card
 
-        lab_card = Card("Laboratory details (printed on certificates)")
-        lab_form = QFormLayout()
+    def _lab_card(self) -> Card:
+        card = Card("Laboratory details (printed on certificates)")
+        form = QFormLayout()
         self.lab_name = QLineEdit()
         self.lab_address = QPlainTextEdit()
         self.lab_address.setFixedHeight(64)
@@ -81,33 +101,35 @@ class SettingsView(QWidget):
         self.coa_statement.setFixedHeight(54)
         self.paper_size = QComboBox()
         self.paper_size.addItems(PAPER_SIZES)
-        lab_form.addRow("Laboratory name *", self.lab_name)
-        lab_form.addRow("Address", self.lab_address)
-        lab_form.addRow("Contact", self.lab_contact)
-        lab_form.addRow("Certificate statement", self.coa_statement)
-        lab_form.addRow("Paper size", self.paper_size)
-        lab_card.body.addLayout(lab_form)
-        lab_buttons = QHBoxLayout()
-        lab_buttons.addStretch()
-        save_lab = primary_button("Save laboratory details")
-        save_lab.setDefault(False)
-        save_lab.clicked.connect(lambda *_: self._save_lab())
-        lab_buttons.addWidget(save_lab)
-        lab_card.body.addLayout(lab_buttons)
-        layout.addWidget(lab_card)
+        form.addRow("Laboratory name *", self.lab_name)
+        form.addRow("Address", self.lab_address)
+        form.addRow("Contact", self.lab_contact)
+        form.addRow("Certificate statement", self.coa_statement)
+        form.addRow("Paper size", self.paper_size)
+        card.body.addLayout(form)
+        buttons = QHBoxLayout()
+        buttons.addStretch()
+        save = primary_button("Save laboratory details")
+        save.setDefault(False)
+        save.clicked.connect(lambda *_: self._save_lab())
+        buttons.addWidget(save)
+        card.body.addLayout(buttons)
+        return card
 
-        storage = Card("Data storage")
-        storage.body.addWidget(muted_label(f"Database: {db.url.removeprefix('sqlite:///')}"))
-        storage.body.addWidget(
-            muted_label(
-                "Back this file up regularly (with the app closed) according to your lab's backup procedure. "
-                f"Log files are in {config.log_dir()}."
-            )
-        )
-        layout.addWidget(storage)
-        layout.addStretch()
+    def _storage_card(self) -> Card:
+        card = Card("Data storage")
+        card.body.addWidget(muted_label(f"Database: {self.db.url.removeprefix('sqlite:///')}"))
+        card.body.addWidget(muted_label(
+            "Back this file up regularly (with the app closed) according to your lab's backup procedure. "
+            f"Log files are in {config.log_dir()}."
+        ))
+        return card
 
+    # ----- data -----
     def refresh(self) -> None:
+        self.bug_tab.refresh()
+        if not self.is_admin:
+            return
         with self.db.session() as session:
             self.current = asdict(get_security_settings(session))
             lab = get_lab_info(session)

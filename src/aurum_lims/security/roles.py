@@ -52,6 +52,9 @@ class Permission(StrEnum):
     MANAGE_SETTINGS = "manage_settings"
     # Sample types, storage locations and the sample ID format.
     MANAGE_MASTER_DATA = "manage_master_data"
+    # Upload SOPs / forms to the SOP index; see superseded revisions; handle bug reports.
+    MANAGE_DOCUMENTS = "manage_documents"
+    MANAGE_BUG_REPORTS = "manage_bug_reports"
     VIEW_AUDIT_TRAIL = "view_audit_trail"
     EXPORT_AUDIT_TRAIL = "export_audit_trail"
 
@@ -63,6 +66,8 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.MANAGE_USERS,
             Permission.MANAGE_SETTINGS,
             Permission.MANAGE_MASTER_DATA,
+            Permission.MANAGE_DOCUMENTS,
+            Permission.MANAGE_BUG_REPORTS,
             Permission.VIEW_AUDIT_TRAIL,
             Permission.EXPORT_AUDIT_TRAIL,
         }
@@ -74,6 +79,7 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.REVIEW_RECORDS,
             Permission.APPROVE_RECORDS,
             Permission.MANAGE_MASTER_DATA,
+            Permission.MANAGE_DOCUMENTS,
             Permission.VIEW_AUDIT_TRAIL,
             Permission.EXPORT_AUDIT_TRAIL,
         }

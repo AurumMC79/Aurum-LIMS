@@ -616,3 +616,68 @@ class AnalysisUsage(Base):
     quantity_used: Mapped[str | None] = mapped_column(String(32))
     recorded_at: Mapped[datetime] = mapped_column(default=utcnow)
     recorded_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+
+
+# ---------------------------------------------------------------------------
+# SOP index (controlled documents) and bug reports
+# ---------------------------------------------------------------------------
+
+
+class ControlledDocument(Base):
+    """An SOP, form or other controlled document. Its PDFs are stored as revisions;
+    ``current_revision_id`` points at the one in effect."""
+
+    __tablename__ = "controlled_documents"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    number: Mapped[str] = mapped_column(String(40), unique=True)
+    title: Mapped[str] = mapped_column(String(200))
+    doc_type: Mapped[str] = mapped_column(String(32))
+    category: Mapped[str | None] = mapped_column(String(80))
+    parent_id: Mapped[int | None] = mapped_column(ForeignKey("controlled_documents.id"), index=True)
+    current_revision_id: Mapped[int | None] = mapped_column(
+        ForeignKey("document_revisions.id", use_alter=True, name="fk_controlled_documents_current_revision_id"))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+
+
+class DocumentRevision(Base):
+    """One uploaded revision of a document, stored exactly as uploaded. Immutable."""
+
+    __tablename__ = "document_revisions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    document_id: Mapped[int] = mapped_column(ForeignKey("controlled_documents.id"), index=True)
+    revision: Mapped[str] = mapped_column(String(16))
+    effective_date: Mapped[date]
+    change_summary: Mapped[str | None] = mapped_column(Text)
+    file_name: Mapped[str] = mapped_column(String(255))
+    pdf: Mapped[bytes] = mapped_column(LargeBinary)
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    sha256: Mapped[str] = mapped_column(String(64))
+    uploaded_at: Mapped[datetime] = mapped_column(default=utcnow)
+    uploaded_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+
+
+class BugReport(Base):
+    """A problem reported by a user from inside the app."""
+
+    __tablename__ = "bug_reports"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    number: Mapped[str] = mapped_column(String(16), unique=True)
+    title: Mapped[str] = mapped_column(String(200))
+    area: Mapped[str] = mapped_column(String(60))
+    severity: Mapped[str] = mapped_column(String(16))
+    description: Mapped[str] = mapped_column(Text)
+    steps: Mapped[str | None] = mapped_column(Text)
+    expected: Mapped[str | None] = mapped_column(Text)
+    screenshot: Mapped[bytes | None] = mapped_column(LargeBinary)
+    app_version: Mapped[str] = mapped_column(String(20))
+    status: Mapped[str] = mapped_column(String(20), index=True)
+    resolution: Mapped[str | None] = mapped_column(Text)
+    reported_at: Mapped[datetime] = mapped_column(default=utcnow)
+    reported_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    updated_at: Mapped[datetime | None]
+    updated_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))

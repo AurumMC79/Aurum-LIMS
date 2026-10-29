@@ -12,6 +12,14 @@ A Laboratory Information Management System for QC and regulated laboratories
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for what could come next.
 
+## SOP index and bug reports
+
+| Area | What it does |
+|---|---|
+| SOP Index | Every user can open the current revision of each SOP, form, work instruction or policy (PDF, opened read-only). Forms are listed under their SOP, and you can search by number, title or category. Administrators and QA Reviewers add documents and upload new revisions; a new revision becomes the one in effect, and earlier revisions are kept as superseded copies that only they can open. PDFs are stored in the database exactly as uploaded (max 50 MB), with a fingerprint that is checked whenever they are opened. |
+| Report a bug | **Settings → Report a bug** is available to every user. Enter a title, where it happened, severity, what happened, steps to reproduce, and what you expected. You can attach a screenshot: press Win+Shift+S, then click *Paste screenshot*. Users see their own reports; administrators see all of them and set the status (New, In progress, Fixed, Won't fix, Duplicate) with a resolution note. |
+| Reading reports (developers / IT) | `.venv\Scripts\python -m aurum_lims.tools.bug_reports` lists open reports. Add `BUG-0001` to show one in full, `--all` to include closed ones, or `--export DIR` to save each as Markdown with its screenshot. The tool opens the database read-only. |
+
 ## Instruments and inventory (Phase 5)
 
 | Area | What it does |

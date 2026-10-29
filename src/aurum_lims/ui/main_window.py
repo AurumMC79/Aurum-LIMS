@@ -31,6 +31,7 @@ from aurum_lims.ui.views.account import AccountView
 from aurum_lims.ui.views.audit import AuditView
 from aurum_lims.ui.views.certificates import CertificatesView
 from aurum_lims.ui.views.dashboard import DashboardView
+from aurum_lims.ui.views.documents import DocumentsView
 from aurum_lims.ui.views.instruments import InstrumentsView
 from aurum_lims.ui.views.inventory import InventoryView
 from aurum_lims.ui.views.review import ReviewView
@@ -72,6 +73,7 @@ class MainWindow(QMainWindow):
             self._add_page(ReviewView(db, user))
         self._add_page(OOSView(db, user))
         self._add_page(CertificatesView(db, user))
+        self._add_page(DocumentsView(db, user))
         self._add_page(InstrumentsView(db, user))
         self._add_page(InventoryView(db, user))
         self._add_page(StorageView(db, user))
@@ -83,10 +85,10 @@ class MainWindow(QMainWindow):
             self._add_page(UsersView(db, user))
         if user.can(Permission.VIEW_AUDIT_TRAIL):
             self._add_page(AuditView(db, user))
-        if user.can(Permission.MANAGE_SETTINGS):
-            settings_page = SettingsView(db, user)
-            settings_page.settings_changed.connect(self._apply_settings)
-            self._add_page(settings_page)
+        # Everyone gets Settings (for 'Report a bug'); its admin tabs are only built for administrators.
+        settings_page = SettingsView(db, user)
+        settings_page.settings_changed.connect(self._apply_settings)
+        self._add_page(settings_page)
         self._add_page(AccountView(db, user))
 
         self.page_title = QLabel()

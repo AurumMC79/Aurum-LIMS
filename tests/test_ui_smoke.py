@@ -61,12 +61,13 @@ def test_analyst_main_window_hides_admin_pages(qtbot, db, make_user):
     window = MainWindow(db, analyst)
     qtbot.addWidget(window)
     titles = {p.title for p in window.pages}
+    window.sign_out("test")  # before asserting, so a failure can't leave a window asking to sign out
     assert "Users" not in titles
     assert "Audit Trail" not in titles
-    assert "Settings" not in titles
     assert "Sample Types" not in titles
-    assert {"Samples", "Storage"} <= titles
-    window.sign_out("test")
+    assert {"Samples", "Storage", "Settings"} <= titles  # Settings holds 'Report a bug' for everyone
+    settings = next(p for p in window.pages if p.title == "Settings")
+    assert [settings.tabs.tabText(i) for i in range(settings.tabs.count())] == ["Report a bug"]
 
 
 def test_register_dialog_and_sample_screens(qtbot, db, admin, make_user, monkeypatch):
