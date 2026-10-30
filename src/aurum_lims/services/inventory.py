@@ -98,6 +98,19 @@ class ItemDetails:
     catalogue_number: str | None = None
     min_stock: str | None = None
     days_after_opening: int | None = None
+    supplier_id: int | None = None  # a supplier record; its name is copied into ``supplier``
+
+
+def _with_supplier(session: Session, details: ItemDetails) -> ItemDetails:
+    """Fill the supplier name from the chosen supplier record."""
+    if details.supplier_id is None:
+        return details
+    from aurum_lims.db.models import Supplier
+
+    supplier = session.get(Supplier, details.supplier_id)
+    if supplier is None or not supplier.is_active:
+        raise ValidationError("Choose an active supplier.")
+    return ItemDetails(**{**vars(details), "supplier": supplier.name})
 
 
 def _validate_item(details: ItemDetails) -> ItemDetails:
@@ -115,7 +128,7 @@ def _validate_item(details: ItemDetails) -> ItemDetails:
     if days is not None and not 1 <= int(days) <= 3650:
         raise ValidationError("Days allowed after opening must be between 1 and 3650 (or empty).")
     return ItemDetails(name, kind, unit, _clean(details.grade), _clean(details.supplier),
-                       _clean(details.catalogue_number), min_stock, days)
+                       _clean(details.catalogue_number), min_stock, days, details.supplier_id)
 
 
 def get_item(session: Session, item_id: int) -> InventoryItem:
@@ -136,7 +149,7 @@ def list_items(session: Session, include_inactive: bool = False, kind: str | Non
 
 def create_item(session: Session, actor: SessionUser, details: ItemDetails) -> InventoryItem:
     _can_manage(actor)
-    details = _validate_item(details)
+    details = _validate_item(_with_supplier(session, details))
     item = InventoryItem(created_by_id=actor.id, is_active=True, **vars(details))
     session.add(item)
     session.flush()
@@ -151,7 +164,7 @@ def update_item(session: Session, actor: SessionUser, item_id: int, details: Ite
     if not reason or not reason.strip():
         raise ValidationError("A reason for the change is required.")
     item = get_item(session, item_id)
-    new = {**vars(_validate_item(details)), "is_active": bool(is_active)}
+    new = {**vars(_validate_item(_with_supplier(session, details))), "is_active": bool(is_active)}
     old = {k: getattr(item, k) for k in new}
     changed = {k: v for k, v in old.items() if new[k] != v}
     if not changed:
@@ -234,11 +247,17 @@ def receive_lot(
     certificate_ref: str | None = None,
     location_id: int | None = None,
     notes: str | None = None,
+    supplier_id: int | None = None,
 ) -> InventoryLot:
+    """Receive a lot. ``supplier_id`` defaults to the item's supplier; lots from a
+    disqualified or inactive supplier are refused."""
+    from aurum_lims.services.suppliers import check_receipt
+
     _can_manage(actor)
     item = get_item(session, item_id)
     if not item.is_active:
         raise ValidationError(f"{item.name} is inactive.")
+    supplier = check_receipt(session, supplier_id if supplier_id is not None else item.supplier_id)
     lot_number = _clean(lot_number)
     if not lot_number:
         raise ValidationError("Enter the supplier's lot number.")
@@ -264,12 +283,14 @@ def receive_lot(
         received_on=received_on, expiry_date=expiry_date, quantity_received=_fmt(amount), quantity_on_hand="0",
         purity=purity, certificate_ref=_clean(certificate_ref), location_id=location_id,
         notes=(notes or "").strip() or None, created_by_id=actor.id,
+        supplier_id=supplier.id if supplier else None,
     )
     session.add(lot)
     session.flush()
     _transaction(session, actor, lot, TransactionKind.RECEIVED, amount)
     audit.record(session, AuditAction.LOT_RECEIVED, actor=actor, entity_type="lot", entity_id=lot.internal_id,
                  new={"item": item.name, "lot_number": lot_number, "quantity": f"{lot.quantity_received} {item.unit}",
+                      "supplier": supplier.name if supplier else item.supplier,
                       "expiry_date": expiry_date, "purity": purity, "certificate_ref": lot.certificate_ref})
     return lot
 

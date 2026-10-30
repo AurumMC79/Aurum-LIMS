@@ -51,7 +51,7 @@ Phase 1: user accounts, roles, the audit trail and electronic signatures.
   immutable stock movements; low-stock and expiry warnings
 - Methods list required equipment and materials; tests can't be signed until they are recorded and valid
 - Reference standard purity filled into calculations from the lot certificate
-- Not yet: preventive-maintenance task lists, label printing for lots, supplier management
+- Not yet: label printing for lots
 
 ## After Phase 5 ✅
 - SOP index (view-only PDFs, revisions), Report a bug, desktop shortcut, Reload, lab roles
@@ -60,6 +60,7 @@ Phase 1: user accounts, roles, the audit trail and electronic signatures.
 - Amended certificates: QA reopens a decided sample with an e-signature and reason; the re-issued certificate supersedes the old one (`-A1`, `-A2`)
 - Instrument data import: CSV/TXT import templates per method, live preview, raw files stored and audited
 - Reports: turnaround, workload, OOS trends and control charts (I-chart, ±3σ, run rules, Cpk) with CSV export
+- Preventive-maintenance plans with checklists (overdue plans block use) and supplier management with QA approval status
 
 ## Later
 - Multi-user network deployment (shared database / PostgreSQL)

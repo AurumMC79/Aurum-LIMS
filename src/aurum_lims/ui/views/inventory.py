@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QInputDialog,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QSpinBox,
@@ -30,7 +31,7 @@ from aurum_lims.db import Database
 from aurum_lims.errors import AurumError
 from aurum_lims.security.identity import SessionUser
 from aurum_lims.security.roles import Permission
-from aurum_lims.services import formulas, inventory, storage
+from aurum_lims.services import formulas, inventory, storage, suppliers
 from aurum_lims.services.inventory import UNITS, ItemDetails, ItemKind
 from aurum_lims.ui.common import (
     ask_reason,
@@ -43,10 +44,11 @@ from aurum_lims.ui.common import (
     show_label_message,
 )
 from aurum_lims.ui.views.instruments import AMBER, GREEN, GREY, RED, _table, date_edit
+from aurum_lims.ui.views.suppliers import SuppliersTab
 
 
 class ItemDialog(QDialog):
-    def __init__(self, parent=None, existing=None):
+    def __init__(self, parent=None, existing=None, supplier_choices: list[tuple[int, str]] = ()):
         super().__init__(parent)
         self.setWindowTitle(f"Edit {existing.name}" if existing else "New inventory item")
         self.setMinimumWidth(480)
@@ -64,7 +66,13 @@ class ItemDialog(QDialog):
         self.unit.addItems(UNITS)
         self.unit.setCurrentText(existing.unit if existing else "g")
         self.grade = QLineEdit(existing.grade or "" if existing else "")
-        self.supplier = QLineEdit(existing.supplier or "" if existing else "")
+        self.supplier = QComboBox()
+        self.supplier.addItem("(none)", None)
+        for supplier_id, name in supplier_choices:
+            self.supplier.addItem(name, supplier_id)
+        if existing and existing.supplier_id is not None:
+            self.supplier.setCurrentIndex(max(self.supplier.findData(existing.supplier_id), 0))
+        self.supplier.setToolTip("Add suppliers on the Suppliers tab")
         self.catalogue = QLineEdit(existing.catalogue_number or "" if existing else "")
         self.min_stock = QLineEdit(existing.min_stock or "" if existing else "")
         self.min_stock.setPlaceholderText("Warn when usable stock falls below this (optional)")
@@ -102,15 +110,18 @@ class ItemDialog(QDialog):
         self.accept()
 
     def details(self) -> ItemDetails:
+        supplier_id = self.supplier.currentData()
         return ItemDetails(self.name.text(), self.kind.currentText(), self.unit.currentText(), self.grade.text(),
-                           self.supplier.text(), self.catalogue.text(), self.min_stock.text(),
-                           self.days_open.value() or None)
+                           self.supplier.currentText() if supplier_id else None, self.catalogue.text(),
+                           self.min_stock.text(), self.days_open.value() or None, supplier_id)
 
 
 class ReceiveLotDialog(QDialog):
-    def __init__(self, items, locations, parent=None, item_id: int | None = None):
+    def __init__(self, items, locations, parent=None, item_id: int | None = None,
+                 supplier_rows: list | None = None):
         super().__init__(parent)
         self.items = {i.id: i for i in items}
+        self.supplier_rows = {r.supplier.id: r for r in supplier_rows or []}
         self.setWindowTitle("Receive a lot")
         self.setMinimumWidth(480)
         layout = QVBoxLayout(self)
@@ -145,7 +156,16 @@ class ReceiveLotDialog(QDialog):
         self.location.setItemText(0, "(not specified)")
         self.notes = QPlainTextEdit()
         self.notes.setFixedHeight(46)
+        self.supplier = QComboBox()
+        self.supplier.addItem("(not recorded)", None)
+        for row in self.supplier_rows.values():
+            if row.supplier.is_active:
+                self.supplier.addItem(f"{row.supplier.name} – {row.supplier.status}", row.supplier.id)
+        self.supplier_note = QLabel()
+        self.supplier_note.setWordWrap(True)
         form.addRow("Item", self.item)
+        form.addRow("Supplier", self.supplier)
+        form.addRow("", self.supplier_note)
         form.addRow("Lot number *", self.lot_number)
         form.addRow("Quantity received *", quantity_row)
         form.addRow("Received on", self.received_on)
@@ -165,10 +185,24 @@ class ReceiveLotDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
         self.item.currentIndexChanged.connect(lambda *_: self._sync())
+        self.supplier.currentIndexChanged.connect(lambda *_: self._supplier_changed())
         self._sync()
+
+    def concerns(self) -> list[str]:
+        row = self.supplier_rows.get(self.supplier.currentData())
+        return row.concerns if row else []
+
+    def _supplier_changed(self) -> None:
+        concerns = self.concerns()
+        self.supplier_note.setText("<span style='color:#b54708'>⚠ " + "; ".join(concerns) + "</span>"
+                                   if concerns else "")
+        self.supplier_note.setVisible(bool(concerns))
 
     def _sync(self) -> None:
         item = self.items.get(self.item.currentData())
+        if item is not None:
+            self.supplier.setCurrentIndex(max(self.supplier.findData(item.supplier_id), 0))
+        self._supplier_changed()
         self.unit_label.setText(item.unit if item else "")
         standard = item is not None and item.kind == ItemKind.REFERENCE_STANDARD
         self.purity_label.setText("Purity (%) *" if standard else "Purity (%)")
@@ -180,6 +214,7 @@ class ReceiveLotDialog(QDialog):
             "expiry_date": self.expiry.date().toPython() if self.has_expiry.isChecked() else None,
             "purity": self.purity.text(), "certificate_ref": self.certificate.text(),
             "location_id": self.location.currentData(), "notes": self.notes.toPlainText(),
+            "supplier_id": self.supplier.currentData(),
         }
 
 
@@ -197,6 +232,7 @@ class InventoryView(QWidget):
         self.user = user
         self.lots = []
         self.items = []
+        self.supplier_rows = []
         can_manage = inventory.can_manage(user)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 20, 24, 20)
@@ -261,6 +297,10 @@ class InventoryView(QWidget):
         items_layout.addWidget(self.item_table, 1)
         self.tabs.addTab(items_tab, "Item catalogue")
 
+        # ----- suppliers tab -----
+        self.suppliers_tab = SuppliersTab(db, user, on_change=self.refresh)
+        self.tabs.addTab(self.suppliers_tab, "Suppliers")
+
         self.receive_button.clicked.connect(lambda *_: self._receive())
         self.open_button.clicked.connect(lambda *_: self._open_lot())
         self.adjust_button.clicked.connect(lambda *_: self._adjust())
@@ -292,6 +332,8 @@ class InventoryView(QWidget):
             self.paths = storage.paths(session)
             self.locations = storage.active_choices(session)
             self.active_items = inventory.list_items(session)
+            self.supplier_rows = suppliers.overview(session)
+        self.suppliers_tab.refresh()
         today = date.today()
         self.lot_table.setRowCount(len(self.lots))
         for r, lot in enumerate(self.lots):
@@ -357,8 +399,14 @@ class InventoryView(QWidget):
         if not self.active_items:
             show_error(self, "Add the item to the catalogue first (Item catalogue tab).", "No items")
             return
-        dialog = ReceiveLotDialog(self.active_items, self.locations, self)
+        dialog = ReceiveLotDialog(self.active_items, self.locations, self, supplier_rows=self.supplier_rows)
         while dialog.exec() == QDialog.Accepted:
+            concerns = dialog.concerns()
+            if concerns and QMessageBox.question(
+                    self, "Supplier not approved",
+                    "\n".join(concerns) + "\n\nReceive this lot anyway? The supplier is recorded on the lot.",
+                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
+                continue
             if self._run(lambda s: inventory.receive_lot(s, self.user, dialog.item.currentData(), **dialog.values())):
                 return
 
@@ -387,8 +435,11 @@ class InventoryView(QWidget):
         if reason is not None:
             self._run(lambda s: inventory.discard_lot(s, self.user, lot.id, reason))
 
+    def _supplier_choices(self) -> list[tuple[int, str]]:
+        return [(r.supplier.id, r.supplier.name) for r in self.supplier_rows if r.supplier.is_active]
+
     def _new_item(self) -> None:
-        dialog = ItemDialog(self)
+        dialog = ItemDialog(self, supplier_choices=self._supplier_choices())
         while dialog.exec() == QDialog.Accepted:
             if self._run(lambda s: inventory.create_item(s, self.user, dialog.details())):
                 return
@@ -397,7 +448,7 @@ class InventoryView(QWidget):
         item = self._selected(self.item_table, self.items)
         if item is None:
             return
-        dialog = ItemDialog(self, item)
+        dialog = ItemDialog(self, item, self._supplier_choices())
         # If saving fails (or the reason is cancelled) the window comes back with what was typed.
         while dialog.exec() == QDialog.Accepted:
             reason = ask_reason(self, "Edit item", f"Changing {item.name}.")

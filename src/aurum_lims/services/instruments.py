@@ -7,6 +7,7 @@ maintenance or qualification takes it out of service automatically.
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -15,7 +16,7 @@ from enum import StrEnum
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from aurum_lims.db.models import Instrument, InstrumentEvent, User
+from aurum_lims.db.models import Instrument, InstrumentEvent, MaintenancePlan, User
 from aurum_lims.errors import NotFound, ValidationError
 from aurum_lims.security.identity import SessionUser
 from aurum_lims.security.roles import Permission, require, require_any
@@ -117,7 +118,18 @@ def problems(instrument: Instrument, today: date | None = None) -> list[str]:
         out.append(f"{instrument.code} has no maintenance recorded")
     elif instrument.maintenance_due and instrument.maintenance_due < today:
         out.append(f"{instrument.code} maintenance was due {instrument.maintenance_due.isoformat()}")
+    if instrument.plan_due and instrument.plan_due < today:
+        out.append(f"{instrument.code} maintenance '{instrument.plan_due_name}' was due {instrument.plan_due.isoformat()}")
     return out
+
+
+def sync_plan_due(session: Session, instrument: Instrument) -> None:
+    """Keep the instrument's earliest maintenance-plan due date in step with its plans."""
+    plan = session.scalar(select(MaintenancePlan).where(
+        MaintenancePlan.instrument_id == instrument.id, MaintenancePlan.is_active.is_(True),
+        MaintenancePlan.due_date.is_not(None)).order_by(MaintenancePlan.due_date, MaintenancePlan.name).limit(1))
+    instrument.plan_due = plan.due_date if plan else None
+    instrument.plan_due_name = plan.name if plan else None
 
 
 def get(session: Session, instrument_id: int) -> Instrument:
@@ -144,7 +156,7 @@ def due_soon(session: Session, within_days: int = 14) -> tuple[list[Instrument],
         if problems(instrument, today):
             overdue.append(instrument)
             continue
-        dues = [d for d in (instrument.calibration_due, instrument.maintenance_due) if d]
+        dues = [d for d in (instrument.calibration_due, instrument.maintenance_due, instrument.plan_due) if d]
         if dues and min(dues) <= today + timedelta(days=within_days):
             soon.append(instrument)
     return overdue, soon
@@ -199,8 +211,12 @@ def record_event(
     certificate_ref: str | None = None,
     next_due: date | None = None,
     notes: str | None = None,
+    plan=None,
+    checklist: str | None = None,
 ) -> InstrumentEvent:
-    """Record calibration, maintenance etc. and update the instrument's status and due dates."""
+    """Record calibration, maintenance etc. and update the instrument's status and due dates.
+    ``plan`` (a MaintenancePlan) is given when maintenance was done from a plan's checklist:
+    the plan's own due date moves on instead of the instrument's general maintenance date."""
     require_any(actor, Permission.EDIT_RECORDS, Permission.MANAGE_MASTER_DATA)
     instrument = get(session, instrument_id)
     event_type = EventType(event_type)
@@ -220,9 +236,17 @@ def record_event(
         raise ValidationError(f"{instrument.code} is not out of service.")
 
     old = {"status": instrument.status, "calibration_due": instrument.calibration_due,
-           "maintenance_due": instrument.maintenance_due}
+           "maintenance_due": instrument.maintenance_due, "plan_due": instrument.plan_due}
     passed = result in ("Pass", "N/A")
-    if event_type is EventType.CALIBRATION and passed:
+    if plan is not None:
+        if event_type is not EventType.MAINTENANCE:
+            raise ValidationError("A maintenance plan can only be recorded as maintenance.")
+        if passed:
+            next_due = performed_on + timedelta(days=plan.interval_days)
+            plan.due_date, plan.last_done = next_due, performed_on
+        else:
+            next_due = None
+    elif event_type is EventType.CALIBRATION and passed:
         interval = instrument.calibration_interval_days
         next_due = next_due or (performed_on + timedelta(days=interval) if interval else None)
         if interval and next_due is None:
@@ -247,15 +271,18 @@ def record_event(
         instrument_id=instrument.id, event_type=event_type.value, performed_on=performed_on,
         performed_by=_clean(performed_by), result=result, certificate_ref=_clean(certificate_ref),
         next_due=next_due if result != "Fail" else None, notes=notes, recorded_by_id=actor.id,
+        plan_id=plan.id if plan is not None else None, checklist=checklist,
     )
     session.add(event)
     session.flush()
+    sync_plan_due(session, instrument)
     new = {"status": instrument.status, "calibration_due": instrument.calibration_due,
-           "maintenance_due": instrument.maintenance_due}
+           "maintenance_due": instrument.maintenance_due, "plan_due": instrument.plan_due}
     audit.record(session, AuditAction.INSTRUMENT_EVENT, actor=actor, entity_type="instrument",
                  entity_id=instrument.code,
                  old={k: v for k, v in old.items() if new[k] != v} or None,
                  new={"event": event_type.value, "performed_on": performed_on.isoformat(), "result": result,
+                      **({"plan": plan.name} if plan is not None else {}),
                       **{k: v for k, v in new.items() if old[k] != v}},
                  reason=notes)
     return event
@@ -271,13 +298,17 @@ class EventRow:
     next_due: date | None
     notes: str | None
     recorded_by: str
+    plan_name: str | None = None
+    checklist: list[dict] | None = None
 
 
 def history(session: Session, instrument_id: int) -> list[EventRow]:
     rows = session.execute(
-        select(InstrumentEvent, User.full_name).join(User, InstrumentEvent.recorded_by_id == User.id)
+        select(InstrumentEvent, User.full_name, MaintenancePlan.name)
+        .join(User, InstrumentEvent.recorded_by_id == User.id)
+        .outerjoin(MaintenancePlan, InstrumentEvent.plan_id == MaintenancePlan.id)
         .where(InstrumentEvent.instrument_id == instrument_id)
         .order_by(InstrumentEvent.performed_on.desc(), InstrumentEvent.id.desc())
     )
     return [EventRow(e.event_type, e.performed_on, e.result, e.performed_by, e.certificate_ref, e.next_due, e.notes,
-                     who) for e, who in rows]
+                     who, plan, json.loads(e.checklist) if e.checklist else None) for e, who, plan in rows]

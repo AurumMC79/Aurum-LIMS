@@ -521,6 +521,9 @@ class Instrument(Base):
     notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
     created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    # The earliest due date of the instrument's active maintenance plans (kept in step by the services).
+    plan_due: Mapped[date | None]
+    plan_due_name: Mapped[str | None] = mapped_column(String(100))
 
 
 class InstrumentEvent(Base):
@@ -539,6 +542,9 @@ class InstrumentEvent(Base):
     notes: Mapped[str | None] = mapped_column(Text)
     recorded_at: Mapped[datetime] = mapped_column(default=utcnow)
     recorded_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    # Maintenance done from a plan: the plan and the completed checklist (JSON).
+    plan_id: Mapped[int | None] = mapped_column(ForeignKey("maintenance_plans.id"))
+    checklist: Mapped[str | None] = mapped_column(Text)
 
 
 class InventoryItem(Base):
@@ -551,6 +557,7 @@ class InventoryItem(Base):
     kind: Mapped[str] = mapped_column(String(32), index=True)
     grade: Mapped[str | None] = mapped_column(String(80))
     supplier: Mapped[str | None] = mapped_column(String(150))
+    supplier_id: Mapped[int | None] = mapped_column(ForeignKey("suppliers.id"))
     catalogue_number: Mapped[str | None] = mapped_column(String(80))
     unit: Mapped[str] = mapped_column(String(16))
     min_stock: Mapped[str | None] = mapped_column(String(32))
@@ -581,6 +588,7 @@ class InventoryLot(Base):
     notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
     created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    supplier_id: Mapped[int | None] = mapped_column(ForeignKey("suppliers.id"))
 
 
 class LotTransaction(Base):
@@ -745,3 +753,52 @@ class ImportedFile(Base):
     values_found: Mapped[str] = mapped_column(Text)
     imported_at: Mapped[datetime] = mapped_column(default=utcnow)
     imported_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+
+
+# ---------------------------------------------------------------------------
+# Preventive maintenance and suppliers
+# ---------------------------------------------------------------------------
+
+
+class MaintenancePlan(Base):
+    """A recurring maintenance task list for one instrument (tasks stored as JSON)."""
+
+    __tablename__ = "maintenance_plans"
+    __table_args__ = (UniqueConstraint("instrument_id", "name", name="uq_maintenance_plans_instrument_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    instrument_id: Mapped[int] = mapped_column(ForeignKey("instruments.id"), index=True)
+    name: Mapped[str] = mapped_column(String(100))
+    interval_days: Mapped[int] = mapped_column(Integer)
+    tasks: Mapped[str] = mapped_column(Text)
+    due_date: Mapped[date | None]
+    last_done: Mapped[date | None]
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    updated_at: Mapped[datetime | None]
+    updated_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+
+
+class Supplier(Base):
+    """A supplier of reagents, standards, consumables or services, with its approval status."""
+
+    __tablename__ = "suppliers"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(150), unique=True)
+    status: Mapped[str] = mapped_column(String(32))
+    scope: Mapped[str | None] = mapped_column(Text)
+    contact_name: Mapped[str | None] = mapped_column(String(100))
+    email: Mapped[str | None] = mapped_column(String(150))
+    phone: Mapped[str | None] = mapped_column(String(50))
+    address: Mapped[str | None] = mapped_column(Text)
+    qualification_ref: Mapped[str | None] = mapped_column(String(150))
+    approved_on: Mapped[date | None]
+    review_due: Mapped[date | None]
+    notes: Mapped[str | None] = mapped_column(Text)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    updated_at: Mapped[datetime | None]
+    updated_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))

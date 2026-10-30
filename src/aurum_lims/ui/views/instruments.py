@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QSplitter,
     QTableWidget,
     QTableWidgetItem,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -43,6 +44,7 @@ from aurum_lims.ui.common import (
     show_error,
     show_label_message,
 )
+from aurum_lims.ui.maintenance_dialogs import ChecklistDialog, PlansPanel, ScheduleDialog
 
 RED, AMBER, GREEN, GREY = "#b42318", "#b54708", "#067647", "#8b98a8"
 
@@ -247,7 +249,8 @@ class InstrumentsView(QWidget):
         layout.setSpacing(12)
         layout.addWidget(muted_label(
             "An instrument can be recorded on a test only while it is in service and its calibration and maintenance "
-            "are not overdue. Failed calibrations or checks take it out of service automatically."
+            "(including its maintenance plans) are not overdue. Failed calibrations, checks or maintenance take it out "
+            "of service automatically."
         ))
         toolbar = QHBoxLayout()
         self.new_button = primary_button("New instrument")
@@ -257,8 +260,9 @@ class InstrumentsView(QWidget):
         self.new_button.setVisible(can_manage)
         self.edit_button.setVisible(can_manage)
         self.event_button.setVisible(can_record)
+        self.schedule_button = QPushButton("Maintenance schedule…")
         self.show_retired = QCheckBox("Show retired")
-        for b in (self.new_button, self.edit_button, self.event_button):
+        for b in (self.new_button, self.edit_button, self.event_button, self.schedule_button):
             toolbar.addWidget(b)
         toolbar.addStretch()
         toolbar.addWidget(self.show_retired)
@@ -267,20 +271,27 @@ class InstrumentsView(QWidget):
         splitter = QSplitter(Qt.Vertical)
         self.table = _table(self.COLUMNS, 1)
         splitter.addWidget(self.table)
-        history_box = QWidget()
-        history_layout = QVBoxLayout(history_box)
-        history_layout.setContentsMargins(0, 8, 0, 0)
+        lower = QWidget()
+        lower_layout = QVBoxLayout(lower)
+        lower_layout.setContentsMargins(0, 8, 0, 0)
         self.history_title = QLabel("<b>History</b>")
-        history_layout.addWidget(self.history_title)
+        lower_layout.addWidget(self.history_title)
+        self.lower_tabs = QTabWidget()
         self.history = _table(self.HISTORY_COLUMNS, 6)
-        history_layout.addWidget(self.history)
-        splitter.addWidget(history_box)
+        self.history.setToolTip("Double-click maintenance done from a plan to see its checklist")
+        self.history.doubleClicked.connect(lambda *_: self._show_checklist())
+        self.plans_panel = PlansPanel(db, user, self.refresh)
+        self.lower_tabs.addTab(self.history, "History")
+        self.lower_tabs.addTab(self.plans_panel, "Maintenance plans")
+        lower_layout.addWidget(self.lower_tabs)
+        splitter.addWidget(lower)
         splitter.setSizes([380, 260])
         layout.addWidget(splitter, 1)
 
         self.new_button.clicked.connect(lambda *_: self._new())
         self.edit_button.clicked.connect(lambda *_: self._edit())
         self.event_button.clicked.connect(lambda *_: self._event())
+        self.schedule_button.clicked.connect(lambda *_: self._schedule())
         self.show_retired.toggled.connect(lambda *_: self.refresh())
         self.table.itemSelectionChanged.connect(self._selection_changed)
         self.table.doubleClicked.connect(lambda *_: self._event() if can_record else None)
@@ -295,13 +306,14 @@ class InstrumentsView(QWidget):
         soon = today + timedelta(days=14)
         self.table.setRowCount(len(self.rows))
         for r, (inst, problems) in enumerate(self.rows):
+            maintenance_due = min((d for d in (inst.maintenance_due, inst.plan_due) if d), default=None)
             values = [inst.code, inst.name, inst.category, inst.location or "", inst.status,
                       inst.calibration_due.isoformat() if inst.calibration_due else "—",
-                      inst.maintenance_due.isoformat() if inst.maintenance_due else "—",
+                      maintenance_due.isoformat() if maintenance_due else "—",
                       "No – " + "; ".join(p.replace(f"{inst.code} ", "") for p in problems) if problems else "Yes"]
             for c, value in enumerate(values):
                 item = QTableWidgetItem(value)
-                due = inst.calibration_due if c == 5 else inst.maintenance_due if c == 6 else None
+                due = inst.calibration_due if c == 5 else maintenance_due if c == 6 else None
                 if due and due < today:
                     item.setForeground(QColor(RED))
                 elif due and due <= soon:
@@ -326,18 +338,21 @@ class InstrumentsView(QWidget):
         inst = self._selected()
         self.edit_button.setEnabled(inst is not None)
         self.event_button.setEnabled(inst is not None and inst.status != instruments.InstrumentStatus.RETIRED)
+        self.plans_panel.show_instrument(inst)
         if inst is None:
             self.history_title.setText("<b>History</b> – select an instrument")
             self.history.setRowCount(0)
+            self.events = []
             return
         with self.db.session() as session:
-            events = instruments.history(session, inst.id)
+            events = self.events = instruments.history(session, inst.id)
         details = " · ".join(x for x in (inst.manufacturer, inst.model,
                                          f"S/N {inst.serial_number}" if inst.serial_number else None) if x)
         self.history_title.setText(f"<b>History – {inst.code}</b>  {details}")
         self.history.setRowCount(len(events))
         for r, e in enumerate(events):
-            values = [e.performed_on.isoformat(), e.event_type, e.result or "", e.performed_by or "",
+            event = f"{e.event_type} – {e.plan_name}" if e.plan_name else e.event_type
+            values = [e.performed_on.isoformat(), event, e.result or "", e.performed_by or "",
                       e.certificate_ref or "", e.next_due.isoformat() if e.next_due else "", e.notes or "",
                       e.recorded_by]
             for c, value in enumerate(values):
@@ -345,6 +360,17 @@ class InstrumentsView(QWidget):
                 if c == 2 and value:
                     item.setForeground(QColor(RED if value == "Fail" else GREEN))
                 self.history.setItem(r, c, item)
+
+    def _show_checklist(self) -> None:
+        row = self.history.currentRow()
+        events = getattr(self, "events", [])
+        if 0 <= row < len(events) and events[row].checklist:
+            e = events[row]
+            ChecklistDialog(self, f"{e.plan_name} – {e.performed_on.isoformat()} – {e.result}", e.checklist).exec()
+
+    def _schedule(self) -> None:
+        ScheduleDialog(self.db, self.user, self).exec()
+        self.refresh()
 
     def _run(self, action) -> bool:
         try:
