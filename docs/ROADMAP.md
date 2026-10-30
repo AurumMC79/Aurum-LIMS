@@ -56,6 +56,7 @@ Phase 1: user accounts, roles, the audit trail and electronic signatures.
 ## After Phase 5 ✅
 - SOP index (view-only PDFs, revisions), Report a bug, desktop shortcut, Reload, lab roles
 - Automatic backups: daily at start-up, before every database update, and on demand; checked, pruned and audited
+- LOD / LOQ on number results: reported as ND or < LOQ, with conservative conformance and CoA notes
 
 ## Later
 - Instrument data import (CSV/TXT exports from HPLC, GC, balances, pH meters, etc.)

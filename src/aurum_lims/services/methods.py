@@ -55,6 +55,8 @@ class ParameterSpec:
     decimals: int | None = None
     replicates: int = 1
     formula: str | None = None
+    lod: str | None = None
+    loq: str | None = None
 
     @property
     def calculated(self) -> bool:
@@ -129,6 +131,7 @@ def to_spec(parameter: MethodParameter) -> ParameterSpec:
     return ParameterSpec(
         key=parameter.key, name=parameter.name, kind=parameter.kind, result_type=parameter.result_type,
         unit=parameter.unit, decimals=parameter.decimals, replicates=parameter.replicates, formula=parameter.formula,
+        lod=parameter.lod, loq=parameter.loq,
     )
 
 
@@ -193,8 +196,20 @@ def validate_parameters(parameters: list[ParameterSpec]) -> list[ParameterSpec]:
             if len({c for c in counts if c > 1}) > 1:
                 raise ValidationError(f"{where}: the formula mixes parameters with different numbers of "
                                       "replicates. Shared values (1 replicate) can be mixed with one replicate count.")
+        lod, loq = (p.lod or "").strip() or None, (p.loq or "").strip() or None
+        if lod or loq:
+            if kind is not ParameterKind.RESULT or result_type is not ResultType.NUMERIC:
+                raise ValidationError(f"{where}: only number results can have an LOD or LOQ.")
+            try:
+                lod_value, loq_value = formulas.parse_decimal(lod), formulas.parse_decimal(loq)
+            except ValidationError as exc:
+                raise ValidationError(f"{where}: {exc}") from None
+            if any(v is not None and v <= 0 for v in (lod_value, loq_value)):
+                raise ValidationError(f"{where}: the LOD and LOQ must be greater than zero.")
+            if lod_value is not None and loq_value is not None and lod_value > loq_value:
+                raise ValidationError(f"{where}: the LOD cannot be above the LOQ.")
         spec = ParameterSpec(key, name, kind.value, result_type.value, unit,
-                             None if decimals is None else int(decimals), replicates, formula)
+                             None if decimals is None else int(decimals), replicates, formula, lod, loq)
         if formula:
             spec.replicates = calculated_replicates(spec, earlier)
         cleaned.append(spec)

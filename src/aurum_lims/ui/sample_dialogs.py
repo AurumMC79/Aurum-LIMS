@@ -35,7 +35,7 @@ from PySide6.QtGui import QColor
 from aurum_lims.db.models import Sample, SampleType, Specification, User
 from aurum_lims.errors import AurumError
 from aurum_lims.security.identity import SessionUser
-from aurum_lims.services import certificates, esign, review, sample_ids, samples, sample_types, storage, testing
+from aurum_lims.services import certificates, esign, formulas, review, sample_ids, samples, sample_types, storage, testing
 from aurum_lims.services.sample_types import CATEGORY_FIELDS, FIELD_LABELS, Category
 from aurum_lims.services.samples import (
     DISPOSAL_METHODS,
@@ -651,7 +651,7 @@ class SampleDetailDialog(QDialog):
                     if res is None:
                         values += ["", "", ""]
                     else:
-                        values += [f"{res.parameter_name}: {res.reported_value} {res.unit or ''}".strip(),
+                        values += [f"{res.parameter_name}: {formulas.with_unit(res.reported_value, res.unit)}",
                                    res.spec_text or "", res.conformance]
                     for c, value in enumerate(values):
                         item = QTableWidgetItem(value)

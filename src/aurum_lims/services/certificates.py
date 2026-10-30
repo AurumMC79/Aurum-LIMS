@@ -33,7 +33,7 @@ from aurum_lims.db.models import (
 from aurum_lims.errors import AurumError, NotFound
 from aurum_lims.security.identity import SessionUser
 from aurum_lims.security.roles import Permission, require
-from aurum_lims.services import audit, testing
+from aurum_lims.services import audit, formulas, testing
 from aurum_lims.services.audit import AuditAction
 from aurum_lims.services.lab_info import get_lab_info
 from aurum_lims.services.sample_types import FIELD_LABELS
@@ -87,7 +87,7 @@ def build_html(session: Session, sample: Sample, decision: SampleDecision, numbe
     ]
     info = "".join(f"<tr><td class='k'>{_esc(k)}</td><td>{_esc(v)}</td></tr>" for k, v in info_rows if v)
 
-    result_rows, signatures = [], []
+    result_rows, signatures, detection_notes = [], [], []
     analyses = session.scalars(select(Analysis).where(Analysis.sample_id == sample.id,
                                                       Analysis.status == testing.AnalysisStatus.REVIEWED)
                                .order_by(Analysis.id))
@@ -96,9 +96,15 @@ def build_html(session: Session, sample: Sample, decision: SampleDecision, numbe
         for res in testing.reportable_results(session, analysis.id):
             colour = {"Pass": "#067647", "Fail": "#b42318"}.get(res.conformance, "#4a5562")
             label = {"Pass": "Conforms", "Fail": "Does not conform", "Report": "Reported"}.get(res.conformance, "")
+            if res.reported_value == formulas.NOT_DETECTED:
+                detection_notes.append(f"{res.parameter_name}: ND = not detected, below the limit of detection "
+                                       f"({formulas.with_unit(res.lod, res.unit)}).")
+            elif res.loq and res.reported_value.startswith("<"):
+                detection_notes.append(f"{res.parameter_name}: detected below the limit of quantitation "
+                                       f"({formulas.with_unit(res.loq, res.unit)}).")
             result_rows.append(
                 f"<tr><td>{_esc(method.name)}<br/><span class='m'>{_esc(method.code)} v{method.version}</span></td>"
-                f"<td>{_esc(res.parameter_name)}</td><td><b>{_esc(res.reported_value)} {_esc(res.unit)}</b></td>"
+                f"<td>{_esc(res.parameter_name)}</td><td><b>{_esc(formulas.with_unit(res.reported_value, res.unit))}</b></td>"
                 f"<td>{_esc(res.spec_text or '—')}</td><td style='color:{colour}'><b>{label}</b></td></tr>"
             )
         signatures.append(
@@ -119,6 +125,8 @@ def build_html(session: Session, sample: Sample, decision: SampleDecision, numbe
                       else "The sample has been <b>rejected</b>.")
         conclusion_colour = "#b42318"
     comment = f"<p><b>Comment:</b> {_esc(decision.comment)}</p>" if decision.comment else ""
+    notes = "".join(f"<br/>{_esc(n)}" for n in detection_notes)
+    notes = f"<p class='small'>{notes.removeprefix('<br/>')}</p>" if notes else ""
     address = "<br/>".join(_esc(line) for line in lab.lab_address.splitlines() if line.strip())
 
     return f"""
@@ -147,6 +155,7 @@ def build_html(session: Session, sample: Sample, decision: SampleDecision, numbe
  <tr><th>Test</th><th>Parameter</th><th>Result</th><th>Specification</th><th>Conformance</th></tr>
  {''.join(result_rows) or "<tr><td colspan='5'>No reviewed results.</td></tr>"}
 </table>
+{notes}
 <h2>Conclusion</h2>
 <p style='color:{conclusion_colour}; font-size:11pt'>{conclusion}</p>
 {comment}

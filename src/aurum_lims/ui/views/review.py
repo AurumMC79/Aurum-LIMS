@@ -22,7 +22,7 @@ from aurum_lims.db import Database
 from aurum_lims.errors import AurumError
 from aurum_lims.security.identity import SessionUser
 from aurum_lims.security.roles import Permission
-from aurum_lims.services import certificates, lab_info, review
+from aurum_lims.services import certificates, formulas, lab_info, review
 from aurum_lims.services.esign import SignatureMeaning
 from aurum_lims.services.formulas import Conformance
 from aurum_lims.ui.common import GridTable, error_label, format_local, muted_label, open_pdf, primary_button, show_error
@@ -67,7 +67,7 @@ class DecisionDialog(QDialog):
         table = _table(self.COLUMNS, 1)
         table.setRowCount(len(s.results))
         for r, line in enumerate(s.results):
-            values = [line.test, line.parameter, f"{line.reported} {line.unit or ''}".strip(), line.spec_text or "",
+            values = [line.test, line.parameter, formulas.with_unit(line.reported, line.unit), line.spec_text or "",
                       line.conformance, line.performed_by or "", line.reviewed_by or ""]
             for c, value in enumerate(values):
                 item = QTableWidgetItem(value)

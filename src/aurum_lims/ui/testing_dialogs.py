@@ -472,7 +472,7 @@ class ResultEntryDialog(QDialog):
         extra = QWidget()
         extra_layout = QFormLayout(extra)
         extra_layout.setContentsMargins(0, 0, 0, 0)
-        summary = "\n".join(f"{p.name}: {p.reported} {p.unit or ''}  {p.spec_text or ''}  "
+        summary = "\n".join(f"{p.name}: {formulas.with_unit(p.reported, p.unit)}  {p.spec_text or ''}  "
                             f"{p.conformance.value if p.conformance else ''}" for p in calc.results)
         extra_layout.addRow(muted_label(summary))
         comment_fields = {}

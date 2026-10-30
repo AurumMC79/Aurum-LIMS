@@ -100,6 +100,9 @@ class ParameterResult:
     conformance: Conformance | None = None
     missing: bool = False
     error: str | None = None
+    lod: str | None = None
+    loq: str | None = None
+    below_bound: Decimal | None = None  # set when reported as ND / "< LOQ"
 
     @property
     def is_result(self) -> bool:
@@ -145,7 +148,8 @@ def calculate(
     numbers: dict[str, list[Decimal | None]] = {}
     out: list[ParameterResult] = []
     for p in parameters:
-        r = ParameterResult(p.key, p.name, p.kind, p.result_type, p.unit, p.decimals, p.calculated)
+        r = ParameterResult(p.key, p.name, p.kind, p.result_type, p.unit, p.decimals, p.calculated,
+                            lod=p.lod, loq=p.loq)
         if p.result_type != ResultType.NUMERIC:
             text = (values.get((p.key, 1)) or "").strip()
             r.replicate_values = [text]
@@ -188,12 +192,18 @@ def calculate(
             r.mean = formulas.mean(series)
             r.rsd = formulas.rsd_percent(series)
             r.reported = formulas.format_decimal(r.mean, p.decimals)
+            if r.is_result:
+                below = formulas.detection_text(formulas.parse_decimal(r.reported), p.lod, p.loq)
+                if below is not None:
+                    r.reported, r.below_bound = below
 
         if r.is_result:
             limit = limits.get(p.key)
             if limit is not None:
                 r.spec_text = limit.text(p.unit)
-                if r.reported is not None and not r.error:
+                if r.below_bound is not None:
+                    r.conformance = formulas.check_below(limit.limit_type, limit.low, limit.high, r.below_bound)
+                elif r.reported is not None and not r.error:
                     r.conformance = formulas.check(limit.limit_type, limit.low, limit.high, limit.expected_text,
                                                    r.reported)
         out.append(r)
@@ -484,6 +494,7 @@ def complete_analysis(session: Session, actor: SessionUser, analysis_id: int, pa
             rsd=formulas.format_decimal(p.rsd, 2) if p.rsd is not None else None,
             reported_value=p.reported or "", spec_text=p.spec_text,
             conformance=(p.conformance or Conformance.REPORT).value, comment=comments.get(p.key) or None,
+            lod=p.lod, loq=p.loq,
         ))
     analysis.status = AnalysisStatus.COMPLETE
     analysis.completed_at = now
@@ -500,7 +511,7 @@ def complete_analysis(session: Session, actor: SessionUser, analysis_id: int, pa
         number = _next_oos_number(session)
         session.add(OOSInvestigation(
             number=number, sample_id=sample.id, analysis_id=analysis.id, parameter_key=p.key,
-            parameter_name=p.name, result_value=f"{p.reported} {p.unit or ''}".strip(), spec_text=p.spec_text,
+            parameter_name=p.name, result_value=formulas.with_unit(p.reported, p.unit), spec_text=p.spec_text,
             status="Open", phase="Phase I – laboratory investigation", description=comments[p.key],
             opened_by_id=actor.id,
         ))

@@ -223,6 +223,28 @@ def limit_text(limit_type: LimitType | str, low: str | None, high: str | None, e
     }[limit_type]
 
 
+NOT_DETECTED = "ND"
+
+
+def detection_text(reported: Decimal, lod: str | None, loq: str | None) -> tuple[str, Decimal] | None:
+    """For a rounded result below the method's LOD or LOQ: the text to report
+    ("ND" or "< LOQ value") and the bound the true value lies under."""
+    lod_value, loq_value = parse_decimal(lod), parse_decimal(loq)
+    if lod_value is not None and reported < lod_value:
+        return NOT_DETECTED, lod_value
+    if loq_value is not None and reported < loq_value:
+        return f"< {loq}", loq_value
+    return None
+
+
+def with_unit(reported: str | None, unit: str | None) -> str:
+    """A reported result with its unit ("ND" stands alone)."""
+    reported = reported or ""
+    if not unit or reported == NOT_DETECTED or not reported:
+        return reported
+    return f"{reported} {unit}"
+
+
 def limit_problems(limit_type: LimitType | str, low: str | None, high: str | None, expected: str | None) -> list[str]:
     limit_type = LimitType(limit_type)
     problems = []
@@ -262,4 +284,24 @@ def check(limit_type: LimitType | str, low: str | None, high: str | None, expect
         LimitType.LT: hi is not None and value < hi,
         LimitType.GT: lo is not None and value > lo,
     }[limit_type]
+    return Conformance.PASS if ok else Conformance.FAIL
+
+
+def check_below(limit_type: LimitType | str, low: str | None, high: str | None, bound: Decimal) -> Conformance:
+    """Conformance of a result reported as ND or "< LOQ": the true value lies
+    somewhere from 0 up to (not including) ``bound``, so it conforms only if every
+    value in that range would. Otherwise conformance cannot be shown and the
+    result is treated as not conforming (for example an assay below its LOQ, or
+    a method whose LOQ is above the impurity limit)."""
+    limit_type = LimitType(limit_type)
+    if limit_type is LimitType.REPORT:
+        return Conformance.REPORT
+    lo, hi = parse_decimal(low), parse_decimal(high)
+    ok = {
+        LimitType.RANGE: lo is not None and hi is not None and lo <= 0 and bound <= hi,
+        LimitType.NLT: lo is not None and lo <= 0,
+        LimitType.NMT: hi is not None and bound <= hi,
+        LimitType.LT: hi is not None and bound <= hi,
+        LimitType.GT: False,
+    }.get(limit_type, False)
     return Conformance.PASS if ok else Conformance.FAIL

@@ -311,6 +311,9 @@ class MethodParameter(Base):
     decimals: Mapped[int | None] = mapped_column(Integer)
     replicates: Mapped[int] = mapped_column(Integer, default=1)
     formula: Mapped[str | None] = mapped_column(Text)
+    # Number results only: below the LOD is reported "ND", below the LOQ "< LOQ".
+    lod: Mapped[str | None] = mapped_column(String(32))
+    loq: Mapped[str | None] = mapped_column(String(32))
 
 
 class Specification(Base):
@@ -419,6 +422,8 @@ class ReportableResult(Base):
     comment: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
     revision: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    lod: Mapped[str | None] = mapped_column(String(32))
+    loq: Mapped[str | None] = mapped_column(String(32))
 
 
 class OOSInvestigation(Base):

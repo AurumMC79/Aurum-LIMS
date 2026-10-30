@@ -64,7 +64,7 @@ def type_index(p: ParameterSpec) -> int:
 
 
 class ParameterTable(GridTable):
-    COLUMNS = ["Key", "Name", "Type", "Unit", "Decimals", "Replicates", "Formula (uses keys above)"]
+    COLUMNS = ["Key", "Name", "Type", "Unit", "Decimals", "Replicates", "LOD", "LOQ", "Formula (uses keys above)"]
 
     def __init__(self, parameters: list[ParameterSpec], parent=None):
         super().__init__(0, len(self.COLUMNS), parent)
@@ -74,8 +74,8 @@ class ParameterTable(GridTable):
         self.setSelectionMode(QAbstractItemView.SingleSelection)
         header = self.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.Interactive)
-        header.setSectionResizeMode(6, QHeaderView.Stretch)
-        for column, width in enumerate([110, 190, 190, 60, 72, 80]):
+        header.setSectionResizeMode(8, QHeaderView.Stretch)
+        for column, width in enumerate([110, 190, 190, 60, 72, 80, 64, 64]):
             self.setColumnWidth(column, width)
         for p in parameters:
             self.add_row(p)
@@ -97,7 +97,10 @@ class ParameterTable(GridTable):
         replicates = QSpinBox()
         replicates.setRange(1, methods.MAX_REPLICATES)
         replicates.setValue(p.replicates or 1)
-        for column, widget in enumerate([key, name, kind, unit, decimals, replicates, formula]):
+        lod, loq = QLineEdit(p.lod or ""), QLineEdit(p.loq or "")
+        lod.setToolTip("Limit of detection: results below it are reported as ND (not detected). Optional.")
+        loq.setToolTip("Limit of quantitation: results below it are reported as \"< LOQ\", e.g. < 0.05. Optional.")
+        for column, widget in enumerate([key, name, kind, unit, decimals, replicates, lod, loq, formula]):
             self.setCellWidget(row, column, widget)
         kind.currentIndexChanged.connect(lambda *_: self._sync(kind))
         self._sync(kind)
@@ -117,13 +120,16 @@ class ParameterTable(GridTable):
         self.cellWidget(row, 3).setEnabled(numeric)
         self.cellWidget(row, 4).setEnabled(numeric)
         self.cellWidget(row, 5).setEnabled(numeric and not calculated)
-        self.cellWidget(row, 6).setEnabled(calculated)
+        self.cellWidget(row, 6).setEnabled(numeric and kind == "result")
+        self.cellWidget(row, 7).setEnabled(numeric and kind == "result")
+        self.cellWidget(row, 8).setEnabled(calculated)
 
     def parameters(self) -> list[ParameterSpec]:
         out = []
         for row in range(self.rowCount()):
             w = [self.cellWidget(row, c) for c in range(len(self.COLUMNS))]
             _, kind, result_type, calculated = PARAMETER_TYPES[w[2].currentIndex()]
+            numeric_result = kind == "result" and result_type == "numeric"
             decimals_text = w[4].text().strip()
             try:
                 decimals = int(decimals_text) if decimals_text else None
@@ -131,7 +137,8 @@ class ParameterTable(GridTable):
                 decimals = -1  # rejected by validation with a clear message
             out.append(ParameterSpec(
                 key=w[0].text(), name=w[1].text(), kind=kind, result_type=result_type, unit=w[3].text(),
-                decimals=decimals, replicates=w[5].value(), formula=w[6].text() if calculated else None,
+                decimals=decimals, replicates=w[5].value(), formula=w[8].text() if calculated else None,
+                lod=w[6].text() if numeric_result else None, loq=w[7].text() if numeric_result else None,
             ))
         return out
 
@@ -243,7 +250,7 @@ class MethodEditorDialog(QDialog):
             self.setWindowTitle(f"{method.code} v{method.version} ({method.status}, read-only)")
         else:
             self.setWindowTitle(f"Edit {method.code} v{method.version} (draft)" if method else "New method")
-        self.resize(1000, 760)
+        self.resize(1180, 760)
         layout = QVBoxLayout(self)
         form = QFormLayout()
         self.code = QLineEdit(method.code if method else "")
@@ -264,7 +271,8 @@ class MethodEditorDialog(QDialog):
             "Inputs are entered values that are not reported (weights, peak areas). Results are reported and "
             "compared with the specification. A calculated result's formula can use the keys of parameters listed "
             "above it, e.g. area_spl / area_std * wt_std / wt_spl * purity_std. Parameters with several replicates "
-            "are calculated per replicate and averaged; single values (1 replicate) are shared by all replicates."
+            "are calculated per replicate and averaged; single values (1 replicate) are shared by all replicates. "
+            "Optional LOD / LOQ: number results below the LOD are reported as ND, below the LOQ as \"< LOQ\"."
         ))
         self.table = ParameterTable(parameters or [ParameterSpec("", "")])
         layout.addWidget(self.table, 1)
@@ -434,7 +442,9 @@ class MethodsView(QWidget):
         if method:
             summary = "; ".join(
                 f"{p.name} [{p.key}]" + (f" = {p.formula}" if p.formula else "")
-                + (f" ×{p.replicates}" if p.replicates > 1 else "") for p in params)
+                + (f" ×{p.replicates}" if p.replicates > 1 else "")
+                + "".join(f" {label} {value}" for label, value in (("LOD", p.lod), ("LOQ", p.loq)) if value)
+                for p in params)
             needs = ", ".join(r.label for r in self.requirements.get(method.id, []))
             self.detail.setText(f"{method.code} v{method.version}: {summary}" + (f"\nNeeds: {needs}" if needs else ""))
         else:
