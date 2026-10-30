@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLineEdit,
     QPushButton,
     QScrollArea,
     QSplitter,
@@ -24,6 +25,7 @@ from aurum_lims.errors import AurumError
 from aurum_lims.security.identity import SessionUser
 from aurum_lims.security.roles import Permission
 from aurum_lims.services import intake, sample_types, storage
+from aurum_lims.services.barcodes import ScanSettings, read_scan
 from aurum_lims.ui.common import Card, GridTable, format_local, muted_label, primary_button, show_error
 from aurum_lims.ui.intake_designer import FormDesignerDialog
 from aurum_lims.ui.intake_form import IntakeFormWidget
@@ -43,6 +45,8 @@ class IntakeView(QWidget):
         self.can_design = user.can(Permission.MANAGE_MASTER_DATA)
         self.form_widget: IntakeFormWidget | None = None
         self.form_key = None
+        self.scan_settings = ScanSettings()
+        self.scans: list[str] = []
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 16, 24, 16)
         top = QHBoxLayout()
@@ -53,6 +57,23 @@ class IntakeView(QWidget):
         self.design_button.clicked.connect(lambda *_: self._design())
         top.addWidget(self.design_button)
         layout.addLayout(top)
+
+        self.scan_card = Card("Scan")
+        scan_row = QHBoxLayout()
+        self.scan_box = QLineEdit()
+        self.scan_box.setPlaceholderText("Scan a barcode here – or type / paste a code and press Enter")
+        self.scan_box.setClearButtonEnabled(True)
+        self.scan_box.returnPressed.connect(self._scanned)
+        scan_row.addWidget(self.scan_box, 1)
+        self.scan_card.body.addLayout(scan_row)
+        self.scan_result = QLabel("")
+        self.scan_result.setWordWrap(True)
+        self.scan_result.setTextFormat(Qt.RichText)
+        self.scan_card.body.addWidget(self.scan_result)
+        layout.addWidget(self.scan_card)
+        self.scan_hint = muted_label("Barcode scanning is off. Set it up with Design form… → Barcode scanning….")
+        self.scan_hint.setVisible(False)
+        layout.addWidget(self.scan_hint)
 
         splitter = QSplitter(Qt.Vertical)
         card = Card("New sample")
@@ -65,7 +86,7 @@ class IntakeView(QWidget):
         self.submit_button.clicked.connect(lambda *_: self._submit())
         self.submit_button.setVisible(self.can_submit)
         clear = QPushButton("Clear form")
-        clear.clicked.connect(lambda *_: self.form_widget and self.form_widget.reset())
+        clear.clicked.connect(lambda *_: self._clear())
         buttons.addWidget(self.submit_button)
         buttons.addWidget(clear)
         buttons.addStretch()
@@ -95,6 +116,7 @@ class IntakeView(QWidget):
     def refresh(self) -> None:
         with self.db.session() as session:
             row, fields = intake.current_form(session)
+            self.scan_settings = intake.current_scan(session)
             self.type_choices = [(t.id, f"{t.code} – {t.name}") for t in sample_types.list_types(session)
                                  if t.is_active]
             self.location_choices = storage.active_choices(session)
@@ -118,6 +140,13 @@ class IntakeView(QWidget):
             inner.addWidget(self.form_widget)
             inner.addStretch()
             self.form_scroll.setWidget(holder)
+            self.scans = []
+            self.scan_result.setText("")
+        scanning = self.scan_settings.enabled and self.can_submit
+        self.scan_card.setVisible(scanning)
+        self.scan_hint.setVisible(not self.scan_settings.enabled and self.can_design)
+        if scanning:
+            self.scan_box.setFocus()
         self.recent.setRowCount(len(recent))
         for r, (sample, type_name, at, who) in enumerate(recent):
             values = [sample.sample_id, type_name, sample.material_name or sample.sampling_point or "",
@@ -128,18 +157,51 @@ class IntakeView(QWidget):
     def _submit(self) -> None:
         if self.form_widget is None:
             return
+        values = {**self.form_widget.values(), "_scans": list(self.scans)}
         try:
             with self.db.session() as session:
-                created = [s.sample_id for s in intake.submit(session, self.user, self.form_widget.values())]
+                created = [s.sample_id for s in intake.submit(session, self.user, values)]
         except AurumError as exc:
             show_error(self, exc, "Sample not logged in")
             return
-        self.form_widget.reset()
+        self._clear()
         self.refresh()
         show_created(self, "Sample logged in", created)
-        first = self.form_widget.first_input()
+        first = self.scan_box if self.scan_card.isVisible() else self.form_widget.first_input()
         if first is not None:
             first.setFocus()
+
+    def _clear(self) -> None:
+        if self.form_widget is not None:
+            self.form_widget.reset()
+        self.scans = []
+        self.scan_result.setText("")
+
+    def _scanned(self) -> None:
+        code = self.scan_box.text()
+        self.scan_box.clear()
+        if not code.strip() or self.form_widget is None:
+            return
+        result = read_scan(self.scan_settings, code)
+        filled, rejected = [], []
+        for key, value in result.values.items():
+            label = self.form_widget.label_of(key)
+            shown = value.isoformat() if hasattr(value, "isoformat") else str(value)
+            (filled if self.form_widget.set_value(key, value) else rejected).append(f"{label}: {shown}")
+        if filled:
+            self.scans.append(result.code)
+        parts = [f"<b>Read as {result.kind}</b>"]
+        if filled:
+            parts.append("<span style='color:#067647'>Filled in – " + "; ".join(filled) + "</span>")
+        if rejected:
+            parts.append("<span style='color:#b42318'>Did not fit – " + "; ".join(rejected) + "</span>")
+        if result.unused:
+            parts.append("<span style='color:#6b7785'>Not used – " + "; ".join(result.unused) + "</span>")
+        if not filled and not rejected:
+            parts.append("<span style='color:#b54708'>Nothing was filled in. Check the scan settings "
+                         "(Design form… → Barcode scanning…).</span>")
+        self.scan_result.setText("<br/>".join(parts))
+        self.scan_box.setFocus()
 
     def _design(self) -> None:
         if FormDesignerDialog(self.db, self.user, self.type_choices, self.location_choices,

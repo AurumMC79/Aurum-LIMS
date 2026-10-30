@@ -95,6 +95,10 @@ REQUIREMENTS: list[Requirement] = [
                 "the software by authorised users. Each change to the form is a new version with a reason, and each "
                 "sample keeps an unchangeable record of exactly what was entered.", HIGH,
                 f"{ANNEX11} §4.8, ALCOA+"),
+    Requirement("URS-SMP-05", "Samples", "Barcodes (GS1 supplier codes, separated values or single values) can be "
+                "scanned into the intake form according to versioned scan settings; the user sees what was filled "
+                "in before submitting, and the scanned code is kept with the sample's intake record.", MEDIUM,
+                f"{ANNEX11} §5, §6"),
     # ----- methods and specifications
     Requirement("URS-MTH-01", "Methods & specifications", "Test methods (parameters, units, decimals, replicates, "
                 "formulas, required equipment) and specifications are version-controlled and must be approved by QA "
@@ -284,6 +288,18 @@ OQ: list[Area] = [
                   ("Open the sample's details.", "The intake record shows the form version and every value entered."),
                   ("Rename the PO field and save a new version; open the earlier sample again.",
                    "The earlier sample still shows the original label and value."))),
+        TestCase("OQ-SMP-05", "Barcode scanning", ("URS-SMP-05", "URS-SMP-04"),
+                 "Show that scanned barcodes fill the intake form correctly and are recorded.",
+                 "Scan settings mapping GS1 (01), (10), (17) and a separated-value layout; the laboratory's barcode "
+                 "scanner; test labels whose contents are known.",
+                 (("Design form… → Barcode scanning…: paste the test codes into Try a code.",
+                   "Each value is read correctly and shows the field it fills."),
+                  ("On Sample Intaking, scan a GS1 supplier label.",
+                   "Product number, lot and expiry date are filled in exactly as on the label; parts not used are "
+                   "listed."),
+                  ("Scan a code that contains an unknown sample type.", "It is reported as not fitting; nothing "
+                   "wrong is filled in."),
+                  ("Submit the sample and open its details.", "The intake record lists the scanned code(s)."))),
         TestCase("OQ-SMP-02", "Chain of custody", ("URS-SMP-02", "URS-DAT-02"),
                  "Show that every movement of a sample is recorded permanently.",
                  "A registered sample; two storage locations.",

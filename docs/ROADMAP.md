@@ -63,7 +63,8 @@ Phase 1: user accounts, roles, the audit trail and electronic signatures.
 - Preventive-maintenance plans with checklists (overdue plans block use) and supplier management with QA approval status
 - Validation package: plan, URS, IQ (auto-filled with installation checks and program fingerprint), OQ, PQ, traceability matrix and summary report as Word documents
 - Sample Intaking: lab-designed, versioned intake form with built-in and custom fields
+- Barcode scanning on Sample Intaking: GS1, separated-value and single-value codes
 
 ## Later
-- Barcode scanning on Sample Intaking (scan to fill in fields)
+- Scanning sample ID labels elsewhere (receive, transfer, find a sample)
 - Multi-user network deployment (shared database / PostgreSQL)

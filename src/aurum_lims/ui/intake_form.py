@@ -6,7 +6,7 @@ the preview always looks exactly like the real form.
 
 from __future__ import annotations
 
-from datetime import timezone
+from datetime import date, datetime, timezone
 
 from PySide6.QtCore import QDate, QDateTime, Qt
 from PySide6.QtWidgets import (
@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from aurum_lims.services.barcodes import parse_date_text
 from aurum_lims.services.intake import FieldSpec, FieldType
 
 PLACEHOLDER = "— choose —"
@@ -161,6 +162,48 @@ class IntakeFormWidget(QWidget):
                 else:
                     out[f.key] = editor.dateTime().toPython().astimezone().astimezone(timezone.utc)
         return out
+
+    def set_value(self, key: str, value) -> bool:
+        """Fill one field from a scan. Returns False when the value does not fit the field."""
+        widget = self.widgets.get(key)
+        if widget is None or value is None:
+            return False
+        text = value.isoformat() if isinstance(value, date) else str(value).strip()
+        if isinstance(widget, QLineEdit):
+            widget.setText(text)
+        elif isinstance(widget, QPlainTextEdit):
+            widget.setPlainText(text)
+        elif isinstance(widget, QComboBox):
+            wanted = text.lower()
+            index = next((i for i in range(1, widget.count()) if str(widget.itemData(i)).lower() == wanted
+                          or widget.itemText(i).lower() == wanted), -1)
+            if index < 0:  # e.g. "RM" picks "RM – Raw Material"
+                index = next((i for i in range(1, widget.count())
+                              if widget.itemText(i).lower().startswith(f"{wanted} ")), -1)
+            if index < 0:
+                return False
+            widget.setCurrentIndex(index)
+        elif isinstance(widget, QCheckBox):
+            widget.setChecked(text.lower() in ("1", "y", "yes", "true", "pass", "ok", "x"))
+        else:
+            editor = widget.editor if isinstance(widget, _Optional) else widget
+            moment = value if isinstance(value, (date, datetime)) else parse_date_text(text)
+            if moment is None:
+                return False
+            if isinstance(widget, _Optional):
+                widget.check.setChecked(True)
+            if isinstance(editor, QDateEdit):
+                editor.setDate(QDate(moment.year, moment.month, moment.day))
+            else:
+                if not isinstance(moment, datetime):
+                    moment = datetime(moment.year, moment.month, moment.day)
+                editor.setDateTime(QDateTime(QDate(moment.year, moment.month, moment.day),
+                                             QDateTime.currentDateTime().time() if moment.hour == moment.minute == 0
+                                             else QDateTime(moment).time()))
+        return True
+
+    def label_of(self, key: str) -> str:
+        return next((f.label for f in self.fields if f.key == key), key)
 
     def first_input(self) -> QWidget | None:
         return next(iter(self.widgets.values()), None)

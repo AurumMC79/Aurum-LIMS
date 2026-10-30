@@ -12,7 +12,8 @@ of fields in order. Two kinds of field:
   number, date, date and time, dropdown, checkbox). Section headings organise
   the form and hold no value.
 
-Every saved design is a new, numbered, immutable version. Each sample keeps an
+The scan settings (how barcodes fill the form, see :mod:`barcodes`) are saved
+with the design. Every saved design is a new, numbered, immutable version. Each sample keeps an
 immutable record of exactly what was entered, with the labels as they appeared,
 so later changes to the form never change what was recorded. Until a form is
 saved, a built-in starting form (version 0) is used.
@@ -40,6 +41,7 @@ from aurum_lims.errors import ValidationError
 from aurum_lims.security.identity import SessionUser
 from aurum_lims.security.roles import Permission, require
 from aurum_lims.services import audit, samples, sample_types, storage
+from aurum_lims.services.barcodes import GS, ScanMode, ScanSettings
 from aurum_lims.services.audit import AuditAction
 from aurum_lims.services.samples import MAX_BATCH, PRIORITIES, RECEIPT_CONDITIONS, Receipt, SampleDetails
 
@@ -202,8 +204,31 @@ def validate_form(fields: list[FieldSpec]) -> list[FieldSpec]:
     return cleaned
 
 
-def _fields_json(fields: list[FieldSpec]) -> str:
-    return json.dumps([asdict(f) for f in fields], ensure_ascii=False)
+def validate_scan(scan: ScanSettings, fields: list[FieldSpec]) -> ScanSettings:
+    """Scan settings may only fill fields that are on the form and hold a value."""
+    usable = {f.key: f for f in fields if f.type != FieldType.HEADING}
+    for key in scan.used_keys():
+        if key not in usable:
+            raise ValidationError("Barcode scanning fills a field that is no longer on the form. Open Barcode "
+                                  "scanning… and choose another field.")
+    mode = ScanMode(scan.mode)
+    if len(scan.gs_substitute) > 1:
+        raise ValidationError("The GS substitute is a single character, e.g. ^ or ~.")
+    if scan.enabled and mode in (ScanMode.DELIMITED,) and not scan.separator:
+        raise ValidationError("Choose the separator between the values in the barcode.")
+    return ScanSettings(bool(scan.enabled), mode.value, {ai: k for ai, k in scan.gs1_fields.items() if k},
+                        scan.separator or "|", list(scan.positions), scan.single_field, scan.gs_substitute)
+
+
+def _form_json(fields: list[FieldSpec], scan: ScanSettings) -> str:
+    return json.dumps({"fields": [asdict(f) for f in fields], "scan": asdict(scan)}, ensure_ascii=False)
+
+
+def _parse(row: IntakeFormVersion) -> tuple[list[FieldSpec], ScanSettings]:
+    data = json.loads(row.fields)
+    if isinstance(data, list):  # versions saved before barcode scanning existed
+        return [FieldSpec(**f) for f in data], ScanSettings()
+    return [FieldSpec(**f) for f in data["fields"]], ScanSettings(**data.get("scan", {}))
 
 
 def current_form(session: Session) -> tuple[IntakeFormVersion | None, list[FieldSpec]]:
@@ -211,27 +236,38 @@ def current_form(session: Session) -> tuple[IntakeFormVersion | None, list[Field
     row = session.scalar(select(IntakeFormVersion).order_by(IntakeFormVersion.version.desc()).limit(1))
     if row is None:
         return None, [FieldSpec(**asdict(f)) for f in DEFAULT_FORM]
-    return row, [FieldSpec(**f) for f in json.loads(row.fields)]
+    return row, _parse(row)[0]
 
 
-def save_form(session: Session, actor: SessionUser, fields: list[FieldSpec], change_note: str) -> IntakeFormVersion:
+def current_scan(session: Session) -> ScanSettings:
+    """How barcodes fill the current form (scanning is off until it is set up)."""
+    row = session.scalar(select(IntakeFormVersion).order_by(IntakeFormVersion.version.desc()).limit(1))
+    return _parse(row)[1] if row is not None else ScanSettings()
+
+
+def save_form(session: Session, actor: SessionUser, fields: list[FieldSpec], change_note: str,
+              scan: ScanSettings | None = None) -> IntakeFormVersion:
+    """Save a new version of the form (and its scan settings; ``None`` keeps the current ones)."""
     require(actor, Permission.MANAGE_MASTER_DATA)
     note = (change_note or "").strip()
     if not note:
         raise ValidationError("Describe what changed in the form.")
     fields = validate_form(fields)
     previous, old_fields = current_form(session)
-    if [asdict(f) for f in fields] == [asdict(f) for f in old_fields]:
+    old_scan = current_scan(session)
+    scan = validate_scan(old_scan if scan is None else scan, fields)
+    if [asdict(f) for f in fields] == [asdict(f) for f in old_fields] and asdict(scan) == asdict(old_scan):
         raise ValidationError("Nothing was changed.")
     version = (session.scalar(select(func.max(IntakeFormVersion.version))) or 0) + 1
-    row = IntakeFormVersion(version=version, fields=_fields_json(fields), change_note=note, created_by_id=actor.id)
+    row = IntakeFormVersion(version=version, fields=_form_json(fields, scan), change_note=note,
+                            created_by_id=actor.id)
     session.add(row)
     session.flush()
     old_labels, new_labels = {f.key: f.label for f in old_fields}, {f.key: f.label for f in fields}
     audit.record(session, AuditAction.INTAKE_FORM_SAVED, actor=actor, entity_type="intake_form",
                  entity_id=f"v{version}", reason=note,
                  old={"version": previous.version if previous else 0},
-                 new={"version": version, "fields": len(fields),
+                 new={"version": version, "fields": len(fields), "barcode_scanning": scan.enabled,
                       "added": [new_labels[k] for k in new_labels if k not in old_labels],
                       "removed": [old_labels[k] for k in old_labels if k not in new_labels]})
     return row
@@ -250,7 +286,7 @@ def history(session: Session) -> list[FormVersionRow]:
     rows = session.execute(select(IntakeFormVersion, User.full_name)
                            .join(User, User.id == IntakeFormVersion.created_by_id)
                            .order_by(IntakeFormVersion.version.desc()))
-    return [FormVersionRow(r.version, r.created_at, who, r.change_note, len(json.loads(r.fields))) for r, who in rows]
+    return [FormVersionRow(r.version, r.created_at, who, r.change_note, len(_parse(r)[0])) for r, who in rows]
 
 
 # ---------------------------------------------------------------------------
@@ -345,6 +381,9 @@ def submit(session: Session, actor: SessionUser, values: dict) -> list[Sample]:
     created = samples.register_samples(session, actor, sample_type_id, details, count=count, receipt=receipt)
     entries = [{"key": f.key, "label": f.label, "type": f.type, "value": _display(f, clean.get(f.key), session)}
                for f in fields if f.type != FieldType.HEADING]
+    scans = [str(code).replace(GS, "<GS>") for code in values.get("_scans") or [] if str(code).strip()]
+    if scans:
+        entries.append({"key": "_scan", "label": "Barcode scanned", "type": "text", "value": "  |  ".join(scans)})
     version = form_row.version if form_row else 0
     for sample in created:
         session.add(IntakeSubmission(sample_id=sample.id, form_version_id=form_row.id if form_row else None,
@@ -354,6 +393,7 @@ def submit(session: Session, actor: SessionUser, values: dict) -> list[Sample]:
     audit.record(session, AuditAction.SAMPLE_INTAKE, actor=actor, entity_type="sample",
                  entity_id=", ".join(s.sample_id for s in created),
                  new={"form_version": version, "samples": len(created), "received": receipt is not None,
+                      **({"barcodes": scans} if scans else {}),
                       **({"custom_fields": custom} if custom else {})})
     session.flush()
     return created

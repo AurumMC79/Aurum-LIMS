@@ -33,6 +33,7 @@ from aurum_lims.services import intake
 from aurum_lims.services.intake import BUILTINS, CUSTOM_TYPES, FieldSpec, FieldType
 from aurum_lims.ui.common import ask_reason, error_label, format_local, muted_label, show_label_message
 from aurum_lims.ui.intake_form import IntakeFormWidget
+from aurum_lims.ui.scan_settings import ScanSettingsDialog
 
 
 class FormDesignerDialog(QDialog):
@@ -43,6 +44,7 @@ class FormDesignerDialog(QDialog):
         with db.session() as session:
             row, fields = intake.current_form(session)
             self.history = intake.history(session)
+            self.scan = intake.current_scan(session)
         self.fields: list[FieldSpec] = fields
         self.original = [replace(f) for f in fields]
         self._loading = False
@@ -88,7 +90,11 @@ class FormDesignerDialog(QDialog):
         left_layout.addLayout(move_row)
         reset = QPushButton("Start again from the built-in form")
         reset.clicked.connect(lambda *_: self._reset())
+        self.scan_button = QPushButton()
+        self.scan_button.clicked.connect(lambda *_: self._scan_settings())
+        left_layout.addWidget(self.scan_button)
         left_layout.addWidget(reset)
+        self._scan_label()
         splitter.addWidget(left)
 
         # ----- middle: properties of the selected field -----
@@ -290,10 +296,21 @@ class FormDesignerDialog(QDialog):
         inner.addStretch()
         self.preview_scroll.setWidget(holder)
 
+    # ----- barcode scanning -----
+    def _scan_label(self) -> None:
+        self.scan_button.setText("Barcode scanning… (" + ("on" if self.scan.enabled else "off") + ")")
+
+    def _scan_settings(self) -> None:
+        dialog = ScanSettingsDialog(self, self.fields, self.scan)
+        if dialog.exec() == QDialog.Accepted:
+            self.scan = dialog.settings()
+            self._scan_label()
+
     # ----- save -----
     def _save(self) -> None:
         try:
             fields = intake.validate_form([replace(f) for f in self.fields])
+            intake.validate_scan(self.scan, fields)
         except AurumError as exc:
             show_label_message(self.error, str(exc))
             return
@@ -302,7 +319,7 @@ class FormDesignerDialog(QDialog):
             return
         try:
             with self.db.session() as session:
-                intake.save_form(session, self.user, fields, note)
+                intake.save_form(session, self.user, fields, note, self.scan)
         except AurumError as exc:
             show_label_message(self.error, str(exc))
             return
