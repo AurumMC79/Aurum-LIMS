@@ -42,6 +42,19 @@ balances, pH meters, Karl Fischer and autotitrators, UV-Vis.
 | Importing | When entering results, the analyst chooses **Import from file…**, picks the template and the export, sees the values found (with any warnings, e.g. fewer rows than replicates), and fills them into the form. Nothing is saved until the analyst checks and saves the results as usual. |
 | Traceability | Every imported file is stored with the test exactly as read (it cannot be changed or deleted), with its SHA-256 fingerprint, the template settings used and the values found. The import is recorded in the audit trail, and reviewers can save the original file from the result screen. |
 
+## Reports
+
+The **Reports** page (everyone) works over a chosen period: last 30 / 90 days, last 12 months, this year or a
+custom range. Charts show weeks, or months for periods over about four months. Every table can be exported to
+CSV (opens in Excel); exports are recorded in the audit trail.
+
+| Report | What it shows |
+|---|---|
+| Turnaround | Samples decided in the period: median days from receipt to the first QA decision, the time within which 90 % were decided, % decided by their due date, median by week/month and by sample type. |
+| Workload | Samples received and decided per week/month, tests signed and reviewed per person, and the open samples by status right now. |
+| OOS | Investigations opened per month, OOS per 100 tests signed, the tests with most OOS, and how they were concluded. |
+| Control chart | An individuals chart for any number result (optionally one material): results in the order signed, the mean, control limits at ± 3 sigma (sigma from the average moving range), the specification limits and Cpk. Points beyond 3 sigma, 9 in a row on one side of the mean, or 6 in a row rising or falling are flagged. Results reported as ND / < LOQ are counted but not plotted. |
+
 ## Review, approval and certificates (Phase 4)
 
 | Area | What it does |

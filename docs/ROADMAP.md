@@ -59,8 +59,8 @@ Phase 1: user accounts, roles, the audit trail and electronic signatures.
 - LOD / LOQ on number results: reported as ND or < LOQ, with conservative conformance and CoA notes
 - Amended certificates: QA reopens a decided sample with an e-signature and reason; the re-issued certificate supersedes the old one (`-A1`, `-A2`)
 - Instrument data import: CSV/TXT import templates per method, live preview, raw files stored and audited
+- Reports: turnaround, workload, OOS trends and control charts (I-chart, ±3σ, run rules, Cpk) with CSV export
 
 ## Later
-- Dashboards: turnaround time, workload, OOS trends, control charts
 - Multi-user network deployment (shared database / PostgreSQL)
 - Validation package templates (URS, IQ/OQ/PQ protocols, traceability matrix)

@@ -37,6 +37,7 @@ from aurum_lims.ui.views.dashboard import DashboardView
 from aurum_lims.ui.views.documents import DocumentsView
 from aurum_lims.ui.views.instruments import InstrumentsView
 from aurum_lims.ui.views.inventory import InventoryView
+from aurum_lims.ui.views.reports import ReportsView
 from aurum_lims.ui.views.review import ReviewView
 from aurum_lims.ui.views.methods import MethodsView
 from aurum_lims.ui.views.oos import OOSView
@@ -78,6 +79,7 @@ class MainWindow(QMainWindow):
             self._add_page(ReviewView(db, user))
         self._add_page(OOSView(db, user))
         self._add_page(CertificatesView(db, user))
+        self._add_page(ReportsView(db, user))
         self._add_page(DocumentsView(db, user))
         self._add_page(InstrumentsView(db, user))
         self._add_page(InventoryView(db, user))
