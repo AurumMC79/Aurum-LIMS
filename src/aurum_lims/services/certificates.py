@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import html
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -41,6 +42,7 @@ from aurum_lims.services.sample_types import FIELD_LABELS
 COA = "Certificate of Analysis"
 TEST_REPORT = "Test Report"
 PREFIX = {COA: "CoA", TEST_REPORT: "TR"}
+AMENDMENT_SUFFIX = re.compile(r"-A\d+$")
 
 
 class CertificateIntegrityError(AurumError):
@@ -72,7 +74,8 @@ def _next_number(session: Session, kind: str) -> str:
     return f"{PREFIX[kind]}-{year}-{counter.last_value:04d}"
 
 
-def build_html(session: Session, sample: Sample, decision: SampleDecision, number: str, kind: str) -> str:
+def build_html(session: Session, sample: Sample, decision: SampleDecision, number: str, kind: str,
+               supersedes: Certificate | None = None, amendment_reason: str | None = None) -> str:
     lab = get_lab_info(session)
     sample_type = session.get(SampleType, sample.sample_type_id)
     spec = session.get(Specification, sample.specification_id) if sample.specification_id else None
@@ -128,6 +131,13 @@ def build_html(session: Session, sample: Sample, decision: SampleDecision, numbe
     notes = "".join(f"<br/>{_esc(n)}" for n in detection_notes)
     notes = f"<p class='small'>{notes.removeprefix('<br/>')}</p>" if notes else ""
     address = "<br/>".join(_esc(line) for line in lab.lab_address.splitlines() if line.strip())
+    title = f"Amended {kind}" if supersedes is not None else kind
+    amended = "" if supersedes is None else (
+        "<br/><table width='100%' cellspacing='0' cellpadding='8' style='border: 1px solid #c9a227'>"
+        "<tr><td bgcolor='#fbf3dc'>"
+        f"<b>Amended certificate.</b> This document supersedes {_esc(supersedes.kind)} "
+        f"<b>{_esc(supersedes.number)}</b> issued {_esc(_when(supersedes.issued_at))}, which must no longer be used."
+        f"<br/>Reason for amendment: {_esc(amendment_reason or 'Not recorded')}</td></tr></table>")
 
     return f"""
 <html><head><style>
@@ -145,9 +155,10 @@ def build_html(session: Session, sample: Sample, decision: SampleDecision, numbe
 <table width='100%'><tr>
  <td><h1>{_esc(lab.lab_name or 'Laboratory name not set')}</h1>
   <span class='m'>{address}{'<br/>' if address and lab.lab_contact else ''}{_esc(lab.lab_contact)}</span></td>
- <td align='right'><span style='font-size:14pt; font-weight:600'>{_esc(kind.upper())}</span><br/>
+ <td align='right'><span style='font-size:14pt; font-weight:600'>{_esc(title.upper())}</span><br/>
   No. <b>{_esc(number)}</b><br/><span class='m'>Issued {_esc(_when(decision.decided_at))}</span></td>
 </tr></table>
+{amended}
 <h2>Sample</h2>
 <table class='grid' width='100%' cellspacing='0'>{info}</table>
 <h2>Results</h2>
@@ -201,16 +212,36 @@ def render_pdf(document_html: str, title: str, paper_size: str = "Letter") -> by
 def issue(session: Session, actor: SessionUser, sample: Sample, decision: SampleDecision) -> Certificate:
     """Generate and store the certificate for a decision (called by the decision service)."""
     kind = COA if decision.decision == "Approved" else TEST_REPORT
-    number = _next_number(session, kind)
-    document_html = build_html(session, sample, decision, number, kind)
-    pdf = render_pdf(document_html, f"{kind} {number} – {sample.sample_id}", get_lab_info(session).paper_size)
+    previous = current_certificate(session, sample.id)
+    amendment = 0 if previous is None else previous.amendment + 1
+    reason = sample.amendment_reason if previous is not None else None
+    if previous is not None and previous.kind == kind:
+        # An amendment keeps the original number with a suffix: CoA-2026-0001-A1, -A2, ...
+        number = f"{AMENDMENT_SUFFIX.sub('', previous.number)}-A{amendment}"
+    else:
+        number = _next_number(session, kind)
+    document_html = build_html(session, sample, decision, number, kind, previous, reason)
+    title = f"{'Amended ' if previous else ''}{kind} {number} – {sample.sample_id}"
+    pdf = render_pdf(document_html, title, get_lab_info(session).paper_size)
     certificate = Certificate(number=number, kind=kind, sample_id=sample.id, decision_id=decision.id,
-                              issued_by_id=actor.id, pdf=pdf, sha256=hashlib.sha256(pdf).hexdigest())
+                              issued_by_id=actor.id, pdf=pdf, sha256=hashlib.sha256(pdf).hexdigest(),
+                              supersedes_id=previous.id if previous else None, amendment=amendment,
+                              amendment_reason=reason)
     session.add(certificate)
+    sample.amendment_reason = None
     session.flush()
+    new = {"kind": kind, "sample": sample.sample_id, "sha256": certificate.sha256}
+    if previous is not None:
+        new.update(supersedes=previous.number, amendment=amendment)
     audit.record(session, AuditAction.CERTIFICATE_ISSUED, actor=actor, entity_type="certificate", entity_id=number,
-                 new={"kind": kind, "sample": sample.sample_id, "sha256": certificate.sha256})
+                 new=new, reason=reason)
     return certificate
+
+
+def current_certificate(session: Session, sample_pk: int) -> Certificate | None:
+    """The sample's latest certificate (the one not superseded)."""
+    return session.scalar(select(Certificate).where(Certificate.sample_id == sample_pk)
+                          .order_by(Certificate.id.desc()).limit(1))
 
 
 @dataclass
@@ -224,6 +255,8 @@ class CertificateRow:
     decision: str
     issued_at: datetime
     issued_by: str
+    amendment: int = 0
+    superseded_by: str | None = None
 
 
 def list_certificates(session: Session, actor: SessionUser, sample_pk: int | None = None) -> list[CertificateRow]:
@@ -237,9 +270,11 @@ def list_certificates(session: Session, actor: SessionUser, sample_pk: int | Non
     )
     if sample_pk is not None:
         stmt = stmt.where(Certificate.sample_id == sample_pk)
+    replaced_by = {old: number for old, number in session.execute(
+        select(Certificate.supersedes_id, Certificate.number).where(Certificate.supersedes_id.is_not(None)))}
     return [
         CertificateRow(c.id, c.number, c.kind, s.id, s.sample_id, s.material_name or s.sampling_point, d,
-                       c.issued_at, who)
+                       c.issued_at, who, c.amendment, replaced_by.get(c.id))
         for c, s, d, who in session.execute(stmt)
     ]
 

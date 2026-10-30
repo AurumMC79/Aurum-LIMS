@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import html
+
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -77,6 +79,9 @@ class DecisionDialog(QDialog):
         layout.addWidget(table, 1)
 
         notes = []
+        if s.amends:
+            notes.append(f"<span style='color:#8a6d15'><b>Amendment.</b> The new certificate will supersede "
+                         f"{html.escape(s.amends)}. Reason: {html.escape(s.amendment_reason or '')}</span>")
         if s.open_oos:
             notes.append(f"<span style='color:#b42318'>Open OOS investigation(s): {', '.join(s.open_oos)}. "
                          "Close them on the OOS page before deciding.</span>")

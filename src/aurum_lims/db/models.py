@@ -231,6 +231,8 @@ class Sample(Base):
     updated_at: Mapped[datetime] = mapped_column(default=utcnow)
     # Phase 3: the specification whose limits the results are compared with.
     specification_id: Mapped[int | None] = mapped_column(ForeignKey("specifications.id"))
+    # Set when QA reopens a decided sample; printed on the amended certificate, then cleared.
+    amendment_reason: Mapped[str | None] = mapped_column(Text)
 
 
 class CustodyEvent(Base):
@@ -487,6 +489,10 @@ class Certificate(Base):
     issued_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     pdf: Mapped[bytes] = mapped_column(LargeBinary)
     sha256: Mapped[str] = mapped_column(String(64))
+    # An amended certificate supersedes the one issued before it (amendment 1, 2, ...).
+    supersedes_id: Mapped[int | None] = mapped_column(ForeignKey("certificates.id"))
+    amendment: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    amendment_reason: Mapped[str | None] = mapped_column(Text)
 
 
 # ---------------------------------------------------------------------------

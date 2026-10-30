@@ -27,6 +27,7 @@ class SignatureMeaning(StrEnum):
     REVIEWED = "Reviewed by"
     APPROVED = "Approved by"
     REJECTED = "Rejected by"
+    REOPENED = "Reopened by"
 
 
 MEANING_PERMISSION = {
@@ -34,6 +35,7 @@ MEANING_PERMISSION = {
     SignatureMeaning.REVIEWED: Permission.REVIEW_RECORDS,
     SignatureMeaning.APPROVED: Permission.APPROVE_RECORDS,
     SignatureMeaning.REJECTED: Permission.REVIEW_RECORDS,
+    SignatureMeaning.REOPENED: Permission.APPROVE_RECORDS,
 }
 
 

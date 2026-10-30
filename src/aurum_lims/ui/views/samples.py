@@ -222,8 +222,8 @@ class SamplesView(QWidget):
 
     def _details(self) -> None:
         row = self._selected()
-        if row is not None:
-            SampleDetailDialog(self.db, self.user, row.id, self).exec()
+        if row is not None and SampleDetailDialog(self.db, self.user, row.id, self).exec() == QDialog.Accepted:
+            self.refresh()  # reopened for amendment
 
     def _tests(self) -> None:
         row = self._selected()

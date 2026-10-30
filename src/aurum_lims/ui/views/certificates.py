@@ -26,7 +26,7 @@ from aurum_lims.ui.views.review import open_certificate
 
 class CertificatesView(QWidget):
     title = "Certificates"
-    COLUMNS = ["Number", "Type", "Sample ID", "Material / point", "Decision", "Issued", "Issued by"]
+    COLUMNS = ["Number", "Type", "Sample ID", "Material / point", "Decision", "Status", "Issued", "Issued by"]
 
     def __init__(self, db: Database, user: SessionUser, parent=None):
         super().__init__(parent)
@@ -38,7 +38,8 @@ class CertificatesView(QWidget):
         layout.setSpacing(12)
         layout.addWidget(muted_label(
             "Each certificate is stored exactly as issued. Opening or saving a copy always gives the original "
-            "document, and its digital fingerprint is checked every time."
+            "document, and its digital fingerprint is checked every time. A corrected certificate is issued as an "
+            "amendment (e.g. CoA-2026-0001-A1) and the one it replaces is marked Superseded."
         ))
         toolbar = QHBoxLayout()
         self.open_button = primary_button("Open PDF")
@@ -81,10 +82,14 @@ class CertificatesView(QWidget):
                      f"{r.number} {r.sample_id} {r.material or ''}".lower()]
         self.table.setRowCount(len(self.rows))
         for i, r in enumerate(self.rows):
-            for c, value in enumerate([r.number, r.kind, r.sample_id, r.material or "", r.decision,
+            status = f"Superseded by {r.superseded_by}" if r.superseded_by else (
+                f"Current (amendment {r.amendment})" if r.amendment else "Current")
+            for c, value in enumerate([r.number, r.kind, r.sample_id, r.material or "", r.decision, status,
                                        format_local(r.issued_at), r.issued_by]):
                 item = QTableWidgetItem(value)
-                if c == 4:
+                if r.superseded_by:
+                    item.setForeground(QColor("#8b98a8"))
+                elif c == 4:
                     item.setForeground(QColor("#067647" if r.decision == "Approved" else "#b42318"))
                 self.table.setItem(i, c, item)
         self.count.setText(f"{len(self.rows)} certificate(s)")
@@ -102,8 +107,13 @@ class CertificatesView(QWidget):
 
     def _open(self) -> None:
         row = self._selected()
-        if row is not None:
-            open_certificate(self, self.db, self.user, row.id)
+        if row is None:
+            return
+        if row.superseded_by:
+            QMessageBox.information(self, "Superseded certificate",
+                                    f"{row.number} has been superseded by {row.superseded_by} and must no longer be "
+                                    "used. It opens for reference only.")
+        open_certificate(self, self.db, self.user, row.id)
 
     def _save(self) -> None:
         row = self._selected()

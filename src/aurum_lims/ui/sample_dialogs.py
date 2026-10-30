@@ -36,8 +36,11 @@ from aurum_lims.db.models import Sample, SampleType, Specification, User
 from aurum_lims.errors import AurumError
 from aurum_lims.security.identity import SessionUser
 from aurum_lims.services import certificates, esign, formulas, review, sample_ids, samples, sample_types, storage, testing
+from aurum_lims.security.roles import Permission
+from aurum_lims.services.esign import SignatureMeaning
 from aurum_lims.services.sample_types import CATEGORY_FIELDS, FIELD_LABELS, Category
 from aurum_lims.services.samples import (
+    DECIDED_STATUSES,
     DISPOSAL_METHODS,
     PRIORITIES,
     RECEIPT_CONDITIONS,
@@ -58,6 +61,7 @@ from aurum_lims.ui.common import (
     password_field,
     show_label_message,
 )
+from aurum_lims.ui.sign_dialog import SignDialog
 
 UNITS = ["g", "mg", "kg", "mL", "L", "µL", "units", "tablets", "capsules", "vials", "bottles", "swabs", "plates"]
 
@@ -591,7 +595,9 @@ class SampleDetailDialog(QDialog):
             ("Aliquots", ", ".join(children) or None),
             ("Specification", spec_label),
             ("Decision", decision_text),
-            ("Certificate", ", ".join(f"{c.number} ({c.kind})" for c in self.certificates) or None),
+            ("Certificate", ", ".join(f"{c.number} ({'superseded' if c.superseded_by else c.kind})"
+                                      for c in self.certificates) or None),
+            ("Pending amendment", sample.amendment_reason),
             ("Notes", sample.notes),
         ]
         rows = [(label, value) for label, value in rows if value]
@@ -677,7 +683,16 @@ class SampleDetailDialog(QDialog):
             latest = self.certificates[0]
             open_button = close.addButton(f"Open {latest.number}", QDialogButtonBox.ActionRole)
             open_button.clicked.connect(lambda *_: self._open_certificate(db, user, latest.id))
+        if user.can(Permission.APPROVE_RECORDS) and sample.status in DECIDED_STATUSES:
+            reopen = close.addButton("Reopen for amendment…", QDialogButtonBox.ActionRole)
+            reopen.clicked.connect(lambda *_: self._reopen(db, user, sample.id, sample.sample_id, tests))
         layout.addWidget(close)
+
+    def _reopen(self, db: Database, user: SessionUser, sample_pk: int, sample_id: str, tests) -> None:
+        reviewed = [(a.id, f"{a.method_code} v{a.method_version}") for a, _ in tests
+                    if a.status == testing.AnalysisStatus.REVIEWED]
+        if ReopenDialog(self, db, user, sample_pk, sample_id, reviewed).exec() == QDialog.Accepted:
+            self.accept()
 
     def _open_certificate(self, db: Database, user: SessionUser, certificate_id: int) -> None:
         try:
@@ -687,6 +702,65 @@ class SampleDetailDialog(QDialog):
             QMessageBox.warning(self, "Certificate problem", str(exc))
             return
         open_pdf(number, pdf)
+
+
+class ReopenDialog(QDialog):
+    """Reopen an approved / rejected sample so an amended certificate can be issued."""
+
+    def __init__(self, parent: QWidget, db: Database, user: SessionUser, sample_pk: int, sample_id: str,
+                 reviewed_tests: list[tuple[int, str]]):
+        super().__init__(parent)
+        self.db, self.user, self.sample_pk, self.sample_id = db, user, sample_pk, sample_id
+        self.setWindowTitle(f"Reopen {sample_id} for amendment")
+        self.setMinimumWidth(520)
+        layout = QVBoxLayout(self)
+        layout.addWidget(muted_label(
+            "Use this when an issued certificate must be corrected. Tick the tests whose results need correcting: "
+            "they go back to the analyst, are signed again and need a new review. With no tests ticked the sample "
+            "goes straight back to QA (for example after correcting the lot number). The new decision issues an "
+            "amended certificate that supersedes the current one, which stays on record."))
+        layout.addWidget(QLabel("Reason for amendment (printed on the amended certificate) *"))
+        self.reason = QPlainTextEdit()
+        self.reason.setFixedHeight(70)
+        layout.addWidget(self.reason)
+        self.checks: list[tuple[int, QCheckBox]] = []
+        if reviewed_tests:
+            box = QGroupBox("Return these tests for correction")
+            box_layout = QVBoxLayout(box)
+            for analysis_id, label in reviewed_tests:
+                check = QCheckBox(label)
+                box_layout.addWidget(check)
+                self.checks.append((analysis_id, check))
+            layout.addWidget(box)
+        self.error = error_label()
+        layout.addWidget(self.error)
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.button(QDialogButtonBox.Ok).setText("Continue to sign…")
+        buttons.accepted.connect(self._continue)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def _continue(self) -> None:
+        reason = self.reason.toPlainText().strip()
+        if not reason:
+            show_label_message(self.error, "Explain why the certificate needs to be amended.")
+            return
+        chosen = [analysis_id for analysis_id, check in self.checks if check.isChecked()]
+
+        def action(password):
+            with self.db.session() as session:
+                return review.reopen_sample(session, self.user, self.sample_pk, password=password, reason=reason,
+                                            return_test_ids=chosen)
+
+        returned = f" {len(chosen)} test(s) will be returned to the analyst." if chosen else ""
+        statement = (f"By entering your password you electronically sign:\n“{SignatureMeaning.REOPENED}” "
+                     f"{self.user.full_name} — sample {self.sample_id} is reopened for amendment.{returned}")
+        if SignDialog(self, "Reopen sample", statement, action, "Sign").exec() == QDialog.Accepted:
+            QMessageBox.information(self, "Sample reopened",
+                                    f"{self.sample_id} is reopened. "
+                                    + ("Its returned tests are on the analyst's worklist." if chosen else
+                                       "It is waiting for a new QA decision on the Review page."))
+            self.accept()
 
 
 def show_created(parent: QWidget, title: str, ids: list[str]) -> None:

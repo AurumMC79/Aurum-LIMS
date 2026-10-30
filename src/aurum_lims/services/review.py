@@ -8,6 +8,10 @@
    investigation is open, the sample is Approved or Rejected with an
    electronic signature. Approval issues a Certificate of Analysis; rejection
    issues a Test Report. Only conforming samples can be approved.
+3. **Amendment** (QA Reviewer): a decided sample can be reopened with an
+   electronic signature and a reason, optionally returning tests to the
+   analyst for correction. After the tests are re-signed and reviewed, the new
+   decision issues an amended certificate that supersedes the earlier one.
 """
 
 from __future__ import annotations
@@ -34,7 +38,7 @@ from aurum_lims.security.roles import Permission, require, require_any
 from aurum_lims.services import audit, certificates, esign, testing
 from aurum_lims.services.audit import AuditAction
 from aurum_lims.services.esign import SignatureMeaning, SignatureResult
-from aurum_lims.services.samples import SampleStatus
+from aurum_lims.services.samples import DECIDED_STATUSES, SampleStatus
 from aurum_lims.services.testing import AnalysisStatus
 
 APPROVED = "Approved"
@@ -162,6 +166,8 @@ class DecisionSummary:
     results: list[ResultLine] = field(default_factory=list)
     open_oos: list[str] = field(default_factory=list)
     unreviewed: list[str] = field(default_factory=list)
+    amends: str | None = None  # number of the certificate a new decision will supersede
+    amendment_reason: str | None = None
 
     @property
     def conforms(self) -> bool:
@@ -179,6 +185,10 @@ def decision_summary(session: Session, actor: SessionUser, sample_pk: int) -> De
         raise NotFound("Sample not found.")
     names = {u.id: u.full_name for u in session.scalars(select(User))}
     summary = DecisionSummary(sample.sample_id, sample.status)
+    if sample.amendment_reason:
+        current = certificates.current_certificate(session, sample.id)
+        summary.amends = current.number if current else None
+        summary.amendment_reason = sample.amendment_reason
     for analysis, method in session.execute(
             select(Analysis, TestMethod).join(TestMethod, Analysis.method_id == TestMethod.id)
             .where(Analysis.sample_id == sample.id, Analysis.status != AnalysisStatus.CANCELLED)
@@ -255,6 +265,50 @@ def decide_sample(session: Session, actor: SessionUser, sample_pk: int, *, appro
                  new={"status": sample.status, "conforms": summary.conforms}, reason=comment)
     certificate = certificates.issue(session, actor, sample, decision)
     return DecisionResult(result, certificate.id, certificate.number)
+
+
+def reopen_sample(session: Session, actor: SessionUser, sample_pk: int, *, password: str, reason: str,
+                  return_test_ids: list[int] | None = None) -> SignatureResult:
+    """Reopen an approved or rejected sample so its certificate can be corrected.
+    The chosen reviewed tests go back to the analyst; with none chosen the
+    sample goes straight back to QA for a new decision (e.g. after correcting
+    the sample details). The caller must commit even when the signature fails."""
+    require(actor, Permission.APPROVE_RECORDS)
+    sample = session.get(Sample, sample_pk)
+    if sample is None:
+        raise NotFound("Sample not found.")
+    if sample.status not in DECIDED_STATUSES:
+        raise ValidationError(f"{sample.sample_id} is {sample.status}. Only approved or rejected samples can be "
+                              "reopened for amendment.")
+    reason = (reason or "").strip()
+    if not reason:
+        raise ValidationError("Explain why the certificate needs to be amended.")
+    reviewed = {a.id: a for a in session.scalars(select(Analysis).where(
+        Analysis.sample_id == sample.id, Analysis.status == AnalysisStatus.REVIEWED))}
+    chosen = list(dict.fromkeys(return_test_ids or []))
+    if any(analysis_id not in reviewed for analysis_id in chosen):
+        raise ValidationError("Only reviewed tests of this sample can be returned for correction.")
+    result = esign.sign(session, actor, password, SignatureMeaning.REOPENED, "sample", sample.sample_id,
+                        reason=reason)
+    if not result.ok:
+        return result
+    old_status = sample.status
+    sample.status = SampleStatus.REVIEWED
+    sample.amendment_reason = reason
+    sample.updated_at = utcnow()
+    labels = [testing._label(session, reviewed[analysis_id]) for analysis_id in chosen]
+    audit.record(session, AuditAction.SAMPLE_REOPENED, actor=actor, entity_type="sample", entity_id=sample.sample_id,
+                 old={"status": old_status}, new={"status": sample.status, "tests_returned": labels}, reason=reason)
+    now = utcnow()
+    for analysis_id, label in zip(chosen, labels):
+        analysis = reviewed[analysis_id]
+        analysis.status = AnalysisStatus.RETURNED
+        analysis.review_comment = f"Reopened for amendment: {reason}"
+        analysis.reviewed_at, analysis.reviewed_by_id, analysis.review_signature_id = now, actor.id, None
+        audit.record(session, AuditAction.TEST_RETURNED, actor=actor, entity_type="test", entity_id=label,
+                     reason=analysis.review_comment)
+    testing._refresh_sample_status(session, sample)
+    return result
 
 
 def decision_for(session: Session, sample_pk: int) -> SampleDecision | None:
