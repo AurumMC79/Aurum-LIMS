@@ -1,4 +1,4 @@
-"""Settings page: security and laboratory details (Administrators) and Report a bug (everyone)."""
+"""Settings page: security, laboratory details and backups (Administrators) and Report a bug (everyone)."""
 
 from __future__ import annotations
 
@@ -27,6 +27,7 @@ from aurum_lims.security.roles import Permission
 from aurum_lims.services.lab_info import PAPER_SIZES, LabInfo, get_lab_info, set_lab_info
 from aurum_lims.services.settings import SETTING_INFO, get_security_settings, update_security_settings
 from aurum_lims.ui.common import Card, ask_reason, muted_label, primary_button, show_error
+from aurum_lims.ui.views.backups import BackupsTab
 from aurum_lims.ui.views.bug_report import BugReportTab
 
 
@@ -64,6 +65,8 @@ class SettingsView(QWidget):
         if self.is_admin:
             self.tabs.addTab(_scrolling(self._security_card(), self._storage_card()), "Security")
             self.tabs.addTab(_scrolling(self._lab_card()), "Laboratory details")
+            self.backups_tab = BackupsTab(db, user)
+            self.tabs.addTab(self.backups_tab, "Backups")
         self.bug_tab = BugReportTab(db, user)
         self.tabs.addTab(self.bug_tab, "Report a bug")
 
@@ -120,7 +123,7 @@ class SettingsView(QWidget):
         card = Card("Data storage")
         card.body.addWidget(muted_label(f"Database: {self.db.url.removeprefix('sqlite:///')}"))
         card.body.addWidget(muted_label(
-            "Back this file up regularly (with the app closed) according to your lab's backup procedure. "
+            "Aurum LIMS backs this file up itself (see the Backups tab). "
             f"Log files are in {config.log_dir()}."
         ))
         return card
@@ -133,6 +136,7 @@ class SettingsView(QWidget):
         with self.db.session() as session:
             self.current = asdict(get_security_settings(session))
             lab = get_lab_info(session)
+        self.backups_tab.refresh()
         for key, spin in self.spins.items():
             spin.setValue(self.current[key])
         self.lab_name.setText(lab.lab_name)

@@ -53,6 +53,10 @@ Phase 1: user accounts, roles, the audit trail and electronic signatures.
 - Reference standard purity filled into calculations from the lot certificate
 - Not yet: preventive-maintenance task lists, label printing for lots, supplier management
 
+## After Phase 5 ✅
+- SOP index (view-only PDFs, revisions), Report a bug, desktop shortcut, Reload, lab roles
+- Automatic backups: daily at start-up, before every database update, and on demand; checked, pruned and audited
+
 ## Later
 - Instrument data import (CSV/TXT exports from HPLC, GC, balances, pH meters, etc.)
 - Dashboards: turnaround time, workload, OOS trends, control charts

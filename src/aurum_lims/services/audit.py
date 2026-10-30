@@ -96,6 +96,7 @@ class AuditAction(StrEnum):
     DOCUMENT_UPDATED = "DOCUMENT_UPDATED"
     BUG_REPORTED = "BUG_REPORTED"
     BUG_UPDATED = "BUG_UPDATED"
+    BACKUP_CREATED = "BACKUP_CREATED"
 
 
 def _now_iso() -> str:

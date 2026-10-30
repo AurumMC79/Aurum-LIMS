@@ -38,7 +38,7 @@ def test_settings_tabs_by_role(qtbot, db, admin, make_user):
     qtbot.addWidget(admin_settings)
     admin_settings.refresh()
     assert [admin_settings.tabs.tabText(i) for i in range(admin_settings.tabs.count())] == \
-        ["Security", "Laboratory details", "Report a bug"]
+        ["Security", "Laboratory details", "Backups", "Report a bug"]
 
 
 def _paste_image(tab, colour: int) -> None:

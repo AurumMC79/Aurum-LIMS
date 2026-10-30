@@ -13,7 +13,7 @@ from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
 from aurum_lims import config
 from aurum_lims.db import Database
 from aurum_lims.security.identity import SessionUser
-from aurum_lims.services import auth, sample_types, users
+from aurum_lims.services import auth, backup, sample_types, users
 from aurum_lims.ui.change_password_dialog import ChangePasswordDialog
 from aurum_lims.ui.common import app_icon, load_stylesheet
 from aurum_lims.ui.first_run_dialog import FirstRunDialog
@@ -173,15 +173,28 @@ def main() -> int:
 
     try:
         db = Database(config.database_url())
+        # Copy the database before an update changes it, so the update can always be undone.
+        pre_update = backup.pre_update_backup(db)
         db.upgrade()
         with db.session() as session:
             sample_types.seed_defaults(session)
             users.ensure_master_administrator(session)
+        if pre_update is not None:
+            backup.record_pre_update_backup(db, pre_update)
+            log.info("Backed up before the database update: %s", pre_update)
     except Exception as exc:  # noqa: BLE001 - shown to the user, then exit
         log.exception("Could not open the database")
         QMessageBox.critical(None, config.APP_NAME, f"Could not open the database:\n\n{exc}")
         return 1
     log.info("Aurum LIMS %s started, database %s", config.APP_VERSION, db.url)
+    try:
+        automatic = backup.automatic_backup_if_due(db)
+        if automatic is not None:
+            log.info("Automatic backup: %s", automatic)
+    except backup.BackupError as exc:
+        log.error("Automatic backup failed: %s", exc)
+        QMessageBox.warning(None, config.APP_NAME, f"The automatic backup could not be made:\n\n{exc}\n\n"
+                                                   "Aurum LIMS will continue. Check Settings → Backups.")
 
     controller = AppController(app, db)
     if not controller.start():

@@ -12,6 +12,12 @@ ADMIN_PASSWORD = "Spectroscopy2026"
 USER_PASSWORD = "Chemistry2026"
 
 
+@pytest.fixture(autouse=True)
+def _private_data_dir(tmp_path, monkeypatch):
+    """Keep anything a test writes to the data folder (backups, logs) out of the real one."""
+    monkeypatch.setenv("AURUM_LIMS_DATA_DIR", str(tmp_path / "data"))
+
+
 @pytest.fixture
 def db(tmp_path):
     database = Database(f"sqlite:///{(tmp_path / 'test.db').as_posix()}")

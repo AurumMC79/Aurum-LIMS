@@ -124,12 +124,18 @@ folder to any Windows PC; Python does not need to be installed there.
 |---|---|
 | Database | `%APPDATA%\AurumLIMS\aurum.db` |
 | Logs | `%APPDATA%\AurumLIMS\logs\` |
+| Backups | `%APPDATA%\AurumLIMS\backups\` (or the folder set in Settings → Backups) |
 
 To put the data somewhere else, set the environment variable
 `AURUM_LIMS_DATA_DIR` (folder) or `AURUM_LIMS_DATABASE_URL` (full database URL).
 
-**Back up `aurum.db` regularly** with the app closed. Lab data is never stored in
-the git repository.
+**Backups.** Aurum LIMS backs the database up by itself: when it starts, if the
+last backup is older than the interval (24 hours by default), and always just
+before an update changes the database. Administrators can also press
+*Back up now* in Settings → Backups, choose the folder (a network drive is
+safest), the interval and how many backups to keep. Every backup is checked
+with SQLite's integrity check and recorded in the audit trail. The Backups tab
+explains how to restore one. Lab data is never stored in the git repository.
 
 ## Development
 
