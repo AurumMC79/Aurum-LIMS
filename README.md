@@ -44,6 +44,26 @@ balances, pH meters, Karl Fischer and autotitrators, UV-Vis.
 | Importing | When entering results, the analyst chooses **Import from file…**, picks the template and the export, sees the values found (with any warnings, e.g. fewer rows than replicates), and fills them into the form. Nothing is saved until the analyst checks and saves the results as usual. |
 | Traceability | Every imported file is stored with the test exactly as read (it cannot be changed or deleted), with its SHA-256 fingerprint, the template settings used and the values found. The import is recorded in the audit trail, and reviewers can save the original file from the result screen. |
 
+## Validation package
+
+Administrators and QA can create the documents for validating Aurum LIMS (computer-system validation, GAMP 5
+approach) from **Settings → Validation**, as editable Word files:
+
+| Document | Contents |
+|---|---|
+| Validation Plan | Scope, approach, deliverables, responsibilities, acceptance criteria, deviations, change control. |
+| User Requirements Specification | The requirements Aurum LIMS meets, each with an ID, GxP risk rating and the regulation it supports (21 CFR 11, EU Annex 11, ISO/IEC 17025). |
+| Installation Qualification | Filled in automatically with this computer's details (versions, database, schema revision, security settings), automatic checks (database integrity, audit-trail chain, protection triggers, backups) and a SHA-256 manifest of every program file. |
+| Operational Qualification | Step-by-step test scripts for each function with blank Actual result / Pass-Fail / initials columns. |
+| Performance Qualification | End-to-end scenarios to adapt to the laboratory's own products, methods and SOPs. |
+| Traceability Matrix | Every requirement and the tests that cover it (also as CSV). |
+| Validation Summary Report | Results, deviations and release decision template. |
+
+The overall **program fingerprint** is recorded in the IQ and the audit trail. The Validation tab shows whether the
+program has changed since the last package, which is the trigger for change control and re-qualification.
+The requirements and test scripts live in `src/aurum_lims/validation/content.py`; a test checks that every
+requirement is covered by at least one test.
+
 ## Reports
 
 The **Reports** page (everyone) works over a chosen period: last 30 / 90 days, last 12 months, this year or a

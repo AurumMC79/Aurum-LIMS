@@ -29,6 +29,7 @@ from aurum_lims.services.settings import SETTING_INFO, get_security_settings, up
 from aurum_lims.ui.common import Card, ask_reason, muted_label, primary_button, show_error
 from aurum_lims.ui.views.backups import BackupsTab
 from aurum_lims.ui.views.bug_report import BugReportTab
+from aurum_lims.ui.views.validation import ValidationTab
 
 
 def _scrolling(*widgets: QWidget) -> QScrollArea:
@@ -67,6 +68,10 @@ class SettingsView(QWidget):
             self.tabs.addTab(_scrolling(self._lab_card()), "Laboratory details")
             self.backups_tab = BackupsTab(db, user)
             self.tabs.addTab(self.backups_tab, "Backups")
+        self.validation_tab = None
+        if self.is_admin or user.can(Permission.APPROVE_RECORDS):
+            self.validation_tab = ValidationTab(db, user)
+            self.tabs.addTab(self.validation_tab, "Validation")
         self.bug_tab = BugReportTab(db, user)
         self.tabs.addTab(self.bug_tab, "Report a bug")
 
@@ -131,6 +136,8 @@ class SettingsView(QWidget):
     # ----- data -----
     def refresh(self) -> None:
         self.bug_tab.refresh()
+        if self.validation_tab is not None:
+            self.validation_tab.refresh()
         if not self.is_admin:
             return
         with self.db.session() as session:

@@ -19,6 +19,7 @@ if not exist ".venv\Scripts\python.exe" (
     --hidden-import alembic.op ^
     --hidden-import alembic.context ^
     --hidden-import alembic.ddl.sqlite ^
+    --collect-data docx ^
     --exclude-module pytest ^
     src\aurum_lims\__main__.py || goto :error
 

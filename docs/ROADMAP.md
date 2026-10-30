@@ -61,7 +61,7 @@ Phase 1: user accounts, roles, the audit trail and electronic signatures.
 - Instrument data import: CSV/TXT import templates per method, live preview, raw files stored and audited
 - Reports: turnaround, workload, OOS trends and control charts (I-chart, ±3σ, run rules, Cpk) with CSV export
 - Preventive-maintenance plans with checklists (overdue plans block use) and supplier management with QA approval status
+- Validation package: plan, URS, IQ (auto-filled with installation checks and program fingerprint), OQ, PQ, traceability matrix and summary report as Word documents
 
 ## Later
 - Multi-user network deployment (shared database / PostgreSQL)
-- Validation package templates (URS, IQ/OQ/PQ protocols, traceability matrix)
