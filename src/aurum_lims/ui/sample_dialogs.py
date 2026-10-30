@@ -35,7 +35,7 @@ from PySide6.QtGui import QColor
 from aurum_lims.db.models import Sample, SampleType, Specification, User
 from aurum_lims.errors import AurumError
 from aurum_lims.security.identity import SessionUser
-from aurum_lims.services import certificates, esign, formulas, review, sample_ids, samples, sample_types, storage, testing
+from aurum_lims.services import certificates, esign, formulas, intake, review, sample_ids, samples, sample_types, storage, testing
 from aurum_lims.security.roles import Permission
 from aurum_lims.services.esign import SignatureMeaning
 from aurum_lims.services.sample_types import CATEGORY_FIELDS, FIELD_LABELS, Category
@@ -562,6 +562,7 @@ class SampleDetailDialog(QDialog):
                              f"{format_local(decision.decided_at)}" + (f" — {decision.comment}" if decision.comment else "")
                              if decision else None)
             self.certificates = certificates.list_certificates(session, user, sample.id)
+            intake_record = intake.intake_record(session, sample.id)
         self.setWindowTitle(f"Sample {sample.sample_id}")
 
         def where(location_id, holder_id):
@@ -611,6 +612,14 @@ class SampleDetailDialog(QDialog):
             grid.addWidget(val, i // 2, (i % 2) * 2 + 1)
         info.body.addLayout(grid)
         layout.addWidget(info)
+
+        if intake_record is not None:
+            layout.addWidget(QLabel(f"<b>Intake form</b>  <span style='color:#6b7785'>version "
+                                    f"{intake_record.form_version} · {format_local(intake_record.submitted_at)} by "
+                                    f"{intake_record.submitted_by}</span>"))
+            intake_text = muted_label("   ·   ".join(f"{label}: {value}" for label, value in intake_record.entries))
+            intake_text.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            layout.addWidget(intake_text)
 
         layout.addWidget(QLabel("<b>Chain of custody</b>"))
         table = GridTable(len(history), len(self.CUSTODY_COLUMNS))

@@ -12,7 +12,12 @@ from aurum_lims.security.roles import Role
 from aurum_lims.services import backup
 from aurum_lims.services.audit import AuditAction
 from aurum_lims.ui.views.settings import SettingsView
+from aurum_lims.security.roles import MASTER_ADMIN_HAS_ALL_PERMISSIONS
 from aurum_lims.validation import content, package
+
+# While the Master Administrator testing set-up is on, the IQ reports it as a failed check.
+SEGREGATION = "Segregation of duties: administrators cannot create, review or approve lab data"
+TESTING_SETUP = [SEGREGATION] if MASTER_ADMIN_HAS_ALL_PERMISSIONS else []
 
 
 def test_every_requirement_is_traced_to_a_test():
@@ -33,19 +38,20 @@ def test_installation_checks(db, admin):
     backup.backup_now(db, admin)
     with db.session() as s:
         checks = package.installation_checks(db, s)
-    assert all(c.passed for c in checks), [(c.name, c.observed) for c in checks if not c.passed]
+    assert [c.name for c in checks if not c.passed] == TESTING_SETUP, [(c.name, c.observed) for c in checks]
     # A missing protection trigger is caught.
     with db.engine.begin() as conn:
         conn.execute(text("DROP TRIGGER certificates_no_update"))
     with db.session() as s:
         failed = {c.name: c.observed for c in package.installation_checks(db, s) if not c.passed}
-    assert failed == {"Immutable records are protected in the database": "missing: certificates_no_update"}
+    assert set(failed) - set(TESTING_SETUP) == {"Immutable records are protected in the database"}
+    assert failed["Immutable records are protected in the database"] == "missing: certificates_no_update"
 
 
 def test_backup_check_fails_without_a_recent_backup(db, admin):
     with db.session() as s:
         failed = [c.name for c in package.installation_checks(db, s) if not c.passed]
-    assert failed == ["Automatic backups are on and recent"]
+    assert failed == ["Automatic backups are on and recent", *TESTING_SETUP]
 
 
 def test_generate_package(db, admin, make_user, tmp_path):
@@ -59,7 +65,7 @@ def test_generate_package(db, admin, make_user, tmp_path):
                      "03 Installation Qualification Protocol.docx", "04 Operational Qualification Protocol.docx",
                      "05 Performance Qualification Protocol.docx", "06 Traceability Matrix.docx",
                      "07 Validation Summary Report.docx", "program_file_manifest.csv", "traceability_matrix.csv"]
-    assert result.checks_passed
+    assert result.checks_passed == (not MASTER_ADMIN_HAS_ALL_PERMISSIONS)
 
     iq = Document(result.folder / "03 Installation Qualification Protocol.docx")
     body = "\n".join(p.text for p in iq.paragraphs)
@@ -106,7 +112,9 @@ def test_validation_tab(qtbot, db, admin, make_user, tmp_path, monkeypatch):
     tab.folder.setText(str(tmp_path))
     monkeypatch.setattr("PySide6.QtWidgets.QMessageBox.information", lambda *a, **k: None)
     tab._create()
-    assert "All 9 automatic installation checks passed" in tab.result.text()
+    expected = ("1 installation check(s) failed: Segregation of duties" if MASTER_ADMIN_HAS_ALL_PERMISSIONS
+                else "All 10 automatic installation checks passed")
+    assert expected in tab.result.text()
     assert "unchanged since" in tab.status.text() and tab.open_button.isEnabled()
     analyst_view = SettingsView(db, make_user("ann", Role.ANALYST))
     qtbot.addWidget(analyst_view)

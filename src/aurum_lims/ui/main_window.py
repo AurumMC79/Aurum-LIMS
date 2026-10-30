@@ -36,6 +36,7 @@ from aurum_lims.ui.views.certificates import CertificatesView
 from aurum_lims.ui.views.dashboard import DashboardView
 from aurum_lims.ui.views.documents import DocumentsView
 from aurum_lims.ui.views.instruments import InstrumentsView
+from aurum_lims.ui.views.intake import IntakeView
 from aurum_lims.ui.views.inventory import InventoryView
 from aurum_lims.ui.views.reports import ReportsView
 from aurum_lims.ui.views.review import ReviewView
@@ -73,6 +74,8 @@ class MainWindow(QMainWindow):
         self.nav.setFocusPolicy(Qt.NoFocus)
 
         self._add_page(DashboardView(db, user))
+        if user.can(Permission.CREATE_RECORDS) or user.can(Permission.MANAGE_MASTER_DATA):
+            self._add_page(IntakeView(db, user))
         self._add_page(SamplesView(db, user))
         self._add_page(TestingView(db, user))
         if review_service.can_see_queues(user):

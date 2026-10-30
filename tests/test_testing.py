@@ -92,7 +92,7 @@ def test_parameter_validation():
     assert cleaned[-1].replicates == 2  # calculated per sample replicate
 
 
-def test_method_versioning(db, admin, setup):
+def test_method_versioning(db, admin, setup, make_user):
     with db.session() as s:
         with pytest.raises(ValidationError, match="Only draft"):
             methods.update_draft(s, admin, setup["assay"], name="X", parameters=ASSAY_PARAMS)
@@ -101,7 +101,7 @@ def test_method_versioning(db, admin, setup):
         methods.update_draft(s, admin, v2, name="Assay by HPLC (rev. column)", parameters=ASSAY_PARAMS)
     with db.session() as s:
         with pytest.raises(PermissionDenied):  # administrators cannot approve (segregation of duties)
-            methods.activate(s, admin, v2, "Spectroscopy2026")
+            methods.activate(s, make_user("plain.admin", Role.ADMINISTRATOR), v2, USER_PASSWORD)
     with db.session() as s:
         assert methods.activate(s, setup["qa"], v2, USER_PASSWORD).ok
     with db.session() as s:

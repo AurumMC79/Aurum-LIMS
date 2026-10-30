@@ -107,6 +107,7 @@ CSV (opens in Excel); exports are recorded in the audit trail.
 | Sample types | Raw Material, In-Process, Finished Product, Stability, Environmental Monitoring, Water and Other are created on first start-up. Administrators and QA Reviewers can add more on the **Sample Types** page. Each type's category decides which fields the registration form asks for: for example lot and supplier for raw materials, or study and time point for stability. |
 | Sample IDs | You set the format yourself from fixed text and tokens: `{SEQ:5}` (running number), `{YYYY}` `{YY}` `{MM}` `{DD}` and `{TYPE}` (type code). The running number restarts every year, month or day, or never. There is one lab-wide format, and any sample type can have its own. The editor shows example IDs as you type and explains mistakes. Default format: `AU-{YYYY}-{SEQ:5}`. |
 | Registration | Register one sample or a batch (for example every container of a lot). The samples can also be received into storage in the same step. |
+| Sample Intaking | The **Sample Intaking** page logs samples in through the laboratory's own form. **Design form…** (Admin / QA) adds, removes, renames and reorders fields: built-in fields fill in the sample (type, material, lot, quantity, dates, receipt) and custom fields (text, number, date, dropdown, checkbox) capture anything else. Each saved design is a new version with a reason; every sample keeps an unchangeable record of what was entered, shown on its details. Choosing a storage location receives the sample straight away. |
 | Storage | A tree of locations (QC Lab › Fridge 1 › Shelf A) with storage conditions. The **Storage** page shows what is in each location. |
 | Chain of custody | Receipt (time, condition, temperature), transfers to a location or to a person, aliquots (`<ID>-A1`, `-A2`, …), disposal and cancellation. Each step records when it happened and when it was entered, and can never be edited. Disposal requires an electronic signature. |
 | Corrections | Sample details can be corrected with a reason. The old and new values go into the audit trail. Samples are never deleted. |
@@ -164,6 +165,13 @@ scripts\build_exe.bat
 
 This produces `dist\AurumLIMS\AurumLIMS.exe`. Copy the whole `dist\AurumLIMS`
 folder to any Windows PC; Python does not need to be installed there.
+
+## Testing set-up: Master Administrator
+
+For trying the system out, the **Master Administrator currently has every permission** of every role
+(`MASTER_ADMIN_HAS_ALL_PERMISSIONS` in `security/roles.py`). Before real (GxP) use, set it to `False` so
+administration and lab work are separated again; the IQ in the validation package reports a failed
+segregation-of-duties check while the testing set-up is on.
 
 ## Where data is stored
 

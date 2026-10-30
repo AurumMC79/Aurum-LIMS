@@ -50,7 +50,8 @@ def test_review_segregation_and_permissions(db, signed, make_user):
             review.accept_test(s, signed["qa"], signed["assay_test"], USER_PASSWORD)
 
 
-def test_review_then_approve_issues_coa(db, signed, admin):
+def test_review_then_approve_issues_coa(db, signed, admin, make_user):
+    plain_admin = make_user("plain.admin", Role.ADMINISTRATOR)
     with db.session() as s:
         assert [r.id for r in review.tests_awaiting_review(s, signed["qa"])] == [signed["assay_test"], signed["app_test"]]
     _review_all(db, signed)
@@ -60,8 +61,8 @@ def test_review_then_approve_issues_coa(db, signed, admin):
         summary = review.decision_summary(s, signed["qa"], signed["sample"])
         assert summary.conforms and summary.can_decide and len(summary.results) == 2
     with db.session() as s:
-        with pytest.raises(PermissionDenied):
-            review.decide_sample(s, admin, signed["sample"], approve=True, password="Spectroscopy2026")
+        with pytest.raises(PermissionDenied):  # an ordinary Administrator cannot decide samples
+            review.decide_sample(s, plain_admin, signed["sample"], approve=True, password=USER_PASSWORD)
     with db.session() as s:
         assert not review.decide_sample(s, signed["qa"], signed["sample"], approve=True, password="nope-nope-1").ok
     with db.session() as s:

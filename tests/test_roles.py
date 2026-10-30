@@ -5,7 +5,7 @@ from sqlalchemy import select
 
 from aurum_lims.db.models import AuditEntry, User
 from aurum_lims.errors import PermissionDenied, ValidationError
-from aurum_lims.security.roles import Permission, Role, has_permission
+from aurum_lims.security.roles import MASTER_ADMIN_HAS_ALL_PERMISSIONS, Permission, Role, has_permission
 from aurum_lims.services import users
 from aurum_lims.services.audit import AuditAction
 
@@ -14,11 +14,15 @@ def test_role_permissions():
     master, admin, it = Role.MASTER_ADMINISTRATOR, Role.ADMINISTRATOR, Role.IT_SUPPORT
     assert has_permission(master, Permission.RELOAD_APP) and has_permission(it, Permission.RELOAD_APP)
     assert not has_permission(admin, Permission.RELOAD_APP)
-    # A Master Administrator can do everything an Administrator can, but still cannot approve data.
+    # A Master Administrator can do everything an Administrator can. In the current testing set-up it has every
+    # permission; an ordinary Administrator still cannot touch lab data (segregation of duties).
     for permission in Permission:
         if has_permission(admin, permission):
             assert has_permission(master, permission)
-    assert not has_permission(master, Permission.APPROVE_RECORDS)
+    assert all(has_permission(master, p) for p in Permission) == MASTER_ADMIN_HAS_ALL_PERMISSIONS
+    for permission in (Permission.CREATE_RECORDS, Permission.EDIT_RECORDS, Permission.REVIEW_RECORDS,
+                       Permission.APPROVE_RECORDS):
+        assert not has_permission(admin, permission)
     # IT Support maintains the app; it does not manage users or touch lab data.
     assert has_permission(it, Permission.MANAGE_BUG_REPORTS) and has_permission(it, Permission.VIEW_AUDIT_TRAIL)
     for permission in (Permission.MANAGE_USERS, Permission.CREATE_RECORDS, Permission.EDIT_RECORDS,

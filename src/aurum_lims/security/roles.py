@@ -57,8 +57,9 @@ ROLE_LABELS = {
 }
 
 ROLE_DESCRIPTIONS = {
-    Role.MASTER_ADMINISTRATOR: "Everything an Administrator can do, plus reloading the app; the only role that can "
-                               "give or remove the Master Administrator and IT Support roles.",
+    Role.MASTER_ADMINISTRATOR: "TESTING SET-UP: has every permission of every role (lab work, review, approval and "
+                               "administration). The only role that can give or remove the Master Administrator and "
+                               "IT Support roles. Restrict before the system is used for real (GxP) work.",
     Role.ADMINISTRATOR: "Manages user accounts, system settings, sample types and storage; can view the audit trail.",
     Role.IT_SUPPORT: "Maintains the app: reloads it, handles bug reports, and has read-only access to records and "
                      "the audit trail for troubleshooting.",
@@ -126,8 +127,14 @@ _ANALYST = frozenset(
     }
 )
 
+# Testing set-up requested by the laboratory: the Master Administrator can do everything, so one person can try
+# every function. Set to False before validated use; the Master Administrator then has the administrator
+# permissions plus reload and privileged-role management only (segregation of duties). The IQ flags it while True.
+MASTER_ADMIN_HAS_ALL_PERMISSIONS = True
+
 ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
-    Role.MASTER_ADMINISTRATOR: _ADMINISTRATOR | {Permission.RELOAD_APP, Permission.MANAGE_PRIVILEGED_ROLES},
+    Role.MASTER_ADMINISTRATOR: frozenset(Permission) if MASTER_ADMIN_HAS_ALL_PERMISSIONS else
+    _ADMINISTRATOR | {Permission.RELOAD_APP, Permission.MANAGE_PRIVILEGED_ROLES},
     Role.ADMINISTRATOR: _ADMINISTRATOR,
     Role.IT_SUPPORT: frozenset(
         {

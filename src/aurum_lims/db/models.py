@@ -802,3 +802,35 @@ class Supplier(Base):
     created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     updated_at: Mapped[datetime | None]
     updated_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+
+
+# ---------------------------------------------------------------------------
+# Sample intaking
+# ---------------------------------------------------------------------------
+
+
+class IntakeFormVersion(Base):
+    """One saved design of the sample intake form (fields as JSON). Immutable: each change is a new version."""
+
+    __tablename__ = "intake_form_versions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    version: Mapped[int] = mapped_column(Integer, unique=True)
+    fields: Mapped[str] = mapped_column(Text)
+    change_note: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+
+
+class IntakeSubmission(Base):
+    """What was entered on the intake form for one sample, with each field's label as shown. Immutable."""
+
+    __tablename__ = "intake_submissions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sample_id: Mapped[int] = mapped_column(ForeignKey("samples.id"), index=True)
+    form_version_id: Mapped[int | None] = mapped_column(ForeignKey("intake_form_versions.id"))
+    form_version: Mapped[int] = mapped_column(Integer)  # 0 = the built-in starting form
+    entries: Mapped[str] = mapped_column(Text)
+    submitted_at: Mapped[datetime] = mapped_column(default=utcnow)
+    submitted_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))

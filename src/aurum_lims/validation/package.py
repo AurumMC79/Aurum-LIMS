@@ -42,7 +42,7 @@ from aurum_lims import config
 from aurum_lims.db.models import AuditEntry, User
 from aurum_lims.db.session import MIGRATIONS_DIR, Database
 from aurum_lims.security.identity import SessionUser
-from aurum_lims.security.roles import ROLE_LABELS, Permission, require_any
+from aurum_lims.security.roles import MASTER_ADMIN_HAS_ALL_PERMISSIONS, ROLE_LABELS, Permission, require_any
 from aurum_lims.services import audit, backup, lab_info
 from aurum_lims.services.audit import AuditAction
 from aurum_lims.services.settings import get_security_settings
@@ -51,6 +51,7 @@ from aurum_lims.validation.content import OQ, PQ, REQUIREMENTS, TestCase, all_te
 GOLD = RGBColor(0x9A, 0x7B, 0x1C)
 HEADER_FILL = "F3ECD6"
 PROTECTED_TABLES = ["audit_entries", "electronic_signatures", "custody_events", "reportable_results",
+                    "intake_form_versions", "intake_submissions",
                     "sample_decisions", "certificates", "instrument_events", "lot_transactions",
                     "document_revisions", "imported_files"]
 PROGRAM_SUFFIXES = {".py", ".qss", ".ico", ".mako", ".exe", ".dll", ".pyd", ".zip"}
@@ -200,6 +201,10 @@ def installation_checks(db: Database, session) -> list[Check]:
                         f"last backup {last.astimezone():%Y-%m-%d %H:%M}" if last else "no backup yet", bool(due)))
     admins = session.scalar(select(User.id).where(User.role == "master_administrator", User.is_active.is_(True)))
     checks.append(Check("An active Master Administrator exists", "yes", "yes" if admins else "no", admins is not None))
+    checks.append(Check("Segregation of duties: administrators cannot create, review or approve lab data",
+                        "Master Administrator testing set-up off",
+                        "ON – the Master Administrator has every permission (testing set-up)"
+                        if MASTER_ADMIN_HAS_ALL_PERMISSIONS else "off", not MASTER_ADMIN_HAS_ALL_PERMISSIONS))
     ok_python = sys.version_info >= (3, 11)
     checks.append(Check("Python version supported", "3.11 or later", platform.python_version(), ok_python))
     return checks

@@ -91,6 +91,10 @@ REQUIREMENTS: list[Requirement] = [
                 "aliquots, disposal) is recorded permanently with who, when and where.", HIGH, ISO + " 7.4"),
     Requirement("URS-SMP-03", "Samples", "Sample details can be corrected only with a reason until QA has decided "
                 "the sample; decided samples are locked.", HIGH, f"{ANNEX11} §10"),
+    Requirement("URS-SMP-04", "Samples", "Samples are logged in through the laboratory's own intake form, designed in "
+                "the software by authorised users. Each change to the form is a new version with a reason, and each "
+                "sample keeps an unchangeable record of exactly what was entered.", HIGH,
+                f"{ANNEX11} §4.8, ALCOA+"),
     # ----- methods and specifications
     Requirement("URS-MTH-01", "Methods & specifications", "Test methods (parameters, units, decimals, replicates, "
                 "formulas, required equipment) and specifications are version-controlled and must be approved by QA "
@@ -151,7 +155,8 @@ REQUIREMENTS: list[Requirement] = [
                 "update), each backup is checked for integrity, and backups can be restored by a documented procedure.",
                 HIGH, f"{ANNEX11} §7, {P11}.10(c)"),
     Requirement("URS-DAT-02", "Data protection", "Records cannot be deleted through the software; immutable records "
-                "(audit trail, signatures, custody, results, certificates, events, stock movements, imported files) "
+                "(audit trail, signatures, custody, results, certificates, events, stock movements, imported files, "
+                "intake records) "
                 "are protected in the database itself.", HIGH, f"{P11}.10(c), ALCOA+"),
     Requirement("URS-DAT-03", "Data protection", "All dates and times are recorded in UTC and shown in local time.",
                 MEDIUM, f"{P11}.10(e)"),
@@ -267,6 +272,18 @@ OQ: list[Area] = [
                  (("Samples → Register samples: quantity 3, enter material, lot, priority, due date.",
                    "Three samples are created with consecutive IDs, e.g. AU-2026-00012 … 00014."),
                   ("Register one more sample.", "It receives the next number; no ID is ever repeated."))),
+        TestCase("OQ-SMP-04", "Sample intaking form", ("URS-SMP-04", "URS-SMP-01", "URS-DAT-02"),
+                 "Show that the intake form can be designed, is versioned, and records what was entered.",
+                 "An administrator or QA user (designer) and an analyst (intake).",
+                 (("Sample Intaking → Design form…. Add a custom field 'PO number' (required) and a dropdown 'Grade' "
+                   "with choices; Save as new version with a description.",
+                   "The page shows the new form version; INTAKE_FORM_SAVED is in the audit trail."),
+                  ("As analyst, submit the form without the PO number.", "Refused: PO number must be filled in."),
+                  ("Fill in all required fields, choose a storage location, submit.",
+                   "A sample ID is created; the sample is Received into the chosen location."),
+                  ("Open the sample's details.", "The intake record shows the form version and every value entered."),
+                  ("Rename the PO field and save a new version; open the earlier sample again.",
+                   "The earlier sample still shows the original label and value."))),
         TestCase("OQ-SMP-02", "Chain of custody", ("URS-SMP-02", "URS-DAT-02"),
                  "Show that every movement of a sample is recorded permanently.",
                  "A registered sample; two storage locations.",
