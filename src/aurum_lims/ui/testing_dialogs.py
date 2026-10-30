@@ -33,7 +33,7 @@ from aurum_lims.db.models import Analysis, Sample, Specification, TestMethod, Us
 from aurum_lims.errors import AurumError
 from aurum_lims.security.identity import SessionUser
 from aurum_lims.security.roles import Permission, has_permission
-from aurum_lims.services import formulas, methods, review, specifications, testing, usage
+from aurum_lims.services import formulas, instrument_import, methods, review, specifications, testing, usage
 from aurum_lims.services.esign import SignatureMeaning
 from aurum_lims.services.formulas import Conformance
 from aurum_lims.services.methods import ResultType, to_spec
@@ -48,6 +48,7 @@ from aurum_lims.ui.common import (
     show_error,
     show_label_message,
 )
+from aurum_lims.ui.import_dialogs import ImportResultsDialog, save_imported_file
 from aurum_lims.ui.sign_dialog import SignDialog
 from aurum_lims.ui.usage_widgets import RecordUsageDialog, usage_table
 
@@ -207,6 +208,9 @@ class ResultEntryDialog(QDialog):
             self.requirements = methods.requirements_of(session, method.id)
             self.usages = usage.usages_for(session, analysis.id)
             self.lot_filled = {key: r.label for key, r in usage.lot_filled_keys(session, method.id).items()}
+            self.method_code = method.code
+            self.imported = instrument_import.imported_files_for(session, analysis.id)
+            self.has_templates = bool(instrument_import.templates_for(session, method.code))
         self.editable = self.status in OPEN_ANALYSIS and self.user.can(Permission.EDIT_RECORDS)
         self.setWindowTitle(f"Results – {self.sample_id} – {self.method_label}")
         self._build()
@@ -249,6 +253,23 @@ class ResultEntryDialog(QDialog):
         self.fields: dict[tuple[str, int], QWidget] = {}
         self.calc_labels: dict[tuple[str, int], QLabel] = {}
         entry = Card("Entered and calculated values")
+        if self.editable or self.imported:
+            import_row = QHBoxLayout()
+            if self.editable:
+                import_button = QPushButton("Import from file…")
+                import_button.setToolTip("Read values from an instrument CSV / TXT export using an import template")
+                import_button.clicked.connect(lambda *_: self._import())
+                import_row.addWidget(import_button)
+            if self.imported:
+                files = "; ".join(f"{f.file_name} ({f.template_name}, {f.imported_by}, {format_local(f.imported_at)})"
+                                  for f in self.imported)
+                import_row.addWidget(muted_label(f"Imported: {files}"), 1)
+                save_file = QPushButton("Save imported file…")
+                save_file.clicked.connect(lambda *_: self._save_imported())
+                import_row.addWidget(save_file)
+            else:
+                import_row.addStretch()
+            entry.body.addLayout(import_row)
         grid = QGridLayout()
         grid.setHorizontalSpacing(10)
         max_reps = max((p.replicates for p in self.params), default=1)
@@ -339,6 +360,41 @@ class ResultEntryDialog(QDialog):
         buttons.addWidget(close)
         layout.addLayout(buttons)
         self._recalculate()
+
+    def _import(self) -> None:
+        if not self.has_templates:
+            QMessageBox.information(self, "Import from file",
+                                    f"Method {self.method_code} has no import template yet. Admin / QA can set one "
+                                    "up on the Methods page (Import templates…).")
+            return
+        dialog = ImportResultsDialog(self.db, self.user, self.analysis_id, self.method_code, self.params,
+                                     self.sample_id, self)
+        if dialog.exec() != QDialog.Accepted:
+            return
+        values = self._current_values()  # keep anything typed but not yet saved
+        with self.db.session() as session:
+            self.imported = instrument_import.imported_files_for(session, self.analysis_id)
+        self._build()  # shows the new imported-file line
+        filled = 0
+        for key, value in {**values, **dialog.values}.items():
+            widget = self.fields.get(key)
+            if isinstance(widget, QComboBox):
+                widget.setCurrentText(value)
+            elif isinstance(widget, QLineEdit):
+                widget.setText(value)
+            else:
+                continue
+            filled += key in dialog.values
+        QMessageBox.information(self, "Import from file", f"{filled} value(s) filled in. Check them, then save.")
+
+    def _save_imported(self) -> None:
+        if len(self.imported) == 1:
+            save_imported_file(self, self.db, self.user, self.imported[0].id)
+            return
+        labels = [f"{f.file_name} – {format_local(f.imported_at)}" for f in self.imported]
+        choice, ok = QInputDialog.getItem(self, "Save imported file", "File:", labels, len(labels) - 1, False)
+        if ok:
+            save_imported_file(self, self.db, self.user, self.imported[labels.index(choice)].id)
 
     def _current_values(self) -> dict[tuple[str, int], str]:
         out = {(key, 1): self.stored[(key, 1)] for key in self.lot_filled if (key, 1) in self.stored}

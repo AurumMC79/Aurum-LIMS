@@ -31,6 +31,17 @@ See [docs/ROADMAP.md](docs/ROADMAP.md) for what could come next.
 | Standard purity | A reference-standard requirement can fill a method input (e.g. `purity_std`) with the lot's **certified purity**. The value is never typed by hand, so the calculation always uses the certificate value. |
 | Stock | The quantity used on a test is taken out of the lot's stock (and put back if the entry is removed). Items have a minimum stock level; the dashboard shows low stock, lots that are expired or about to expire, and instruments that need attention. |
 
+## Instrument data import
+
+Most instruments can export a CSV / TXT table: chromatography data systems (Empower, Chromeleon, OpenLab),
+balances, pH meters, Karl Fischer and autotitrators, UV-Vis.
+
+| Area | What it does |
+|---|---|
+| Import templates | On the **Methods** page, Admin / QA choose **Import templates…** to describe one instrument's export for that method: the line with the column headings, the separator, decimal comma, and one rule per parameter: the value column, which rows to use (e.g. *Sample Name* contains `{sample_id}`, or `STD` for the standards) and whether those rows are replicates, averaged, or only the first one is used. Load an example file to pick columns from a list and see exactly which values the template finds. Changes are audited. |
+| Importing | When entering results, the analyst chooses **Import from file…**, picks the template and the export, sees the values found (with any warnings, e.g. fewer rows than replicates), and fills them into the form. Nothing is saved until the analyst checks and saves the results as usual. |
+| Traceability | Every imported file is stored with the test exactly as read (it cannot be changed or deleted), with its SHA-256 fingerprint, the template settings used and the values found. The import is recorded in the audit trail, and reviewers can save the original file from the result screen. |
+
 ## Review, approval and certificates (Phase 4)
 
 | Area | What it does |

@@ -43,6 +43,7 @@ from aurum_lims.ui.common import (
     show_error,
     show_label_message,
 )
+from aurum_lims.ui.import_dialogs import ImportTemplatesDialog
 from aurum_lims.ui.sign_dialog import SignDialog
 
 # (label, kind, result_type, calculated)
@@ -378,9 +379,13 @@ class MethodsView(QWidget):
         self.version_button = QPushButton("New version")
         self.activate_button = QPushButton("Approve && activate")
         self.retire_button = QPushButton("Retire")
+        self.templates_button = QPushButton("Import templates…")
+        self.templates_button.setToolTip("How instrument CSV / TXT exports are read into this method")
+        self.templates_button.setVisible(user.can(Permission.MANAGE_MASTER_DATA))
         self.show_retired = QCheckBox("Show retired versions")
         self.activate_button.setVisible(user.can(Permission.APPROVE_RECORDS))
-        for b in (self.new_button, self.edit_button, self.version_button, self.activate_button, self.retire_button):
+        for b in (self.new_button, self.edit_button, self.version_button, self.activate_button, self.retire_button,
+                  self.templates_button):
             toolbar.addWidget(b)
         toolbar.addStretch()
         toolbar.addWidget(self.show_retired)
@@ -406,6 +411,7 @@ class MethodsView(QWidget):
         self.version_button.clicked.connect(lambda *_: self._new_version())
         self.activate_button.clicked.connect(lambda *_: self._activate())
         self.retire_button.clicked.connect(lambda *_: self._retire())
+        self.templates_button.clicked.connect(lambda *_: self._templates())
         self.show_retired.toggled.connect(lambda *_: self.refresh())
         self._update_buttons()
 
@@ -431,6 +437,11 @@ class MethodsView(QWidget):
         idx = model.selectedRows() if model else []
         return self.rows[idx[0].row()] if idx and idx[0].row() < len(self.rows) else (None, None)
 
+    def _templates(self) -> None:
+        method, _ = self._selected()
+        if method is not None:
+            ImportTemplatesDialog(self.db, self.user, method.code, self).exec()
+
     def _update_buttons(self) -> None:
         method, params = self._selected()
         status = method.status if method else None
@@ -439,6 +450,7 @@ class MethodsView(QWidget):
         self.version_button.setEnabled(status in (VersionStatus.ACTIVE, VersionStatus.RETIRED))
         self.activate_button.setEnabled(status == VersionStatus.DRAFT)
         self.retire_button.setEnabled(status in (VersionStatus.DRAFT, VersionStatus.ACTIVE))
+        self.templates_button.setEnabled(method is not None)
         if method:
             summary = "; ".join(
                 f"{p.name} [{p.key}]" + (f" = {p.formula}" if p.formula else "")

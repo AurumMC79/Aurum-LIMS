@@ -702,3 +702,46 @@ class BugReportScreenshot(Base):
     report_id: Mapped[int] = mapped_column(ForeignKey("bug_reports.id"), index=True)
     position: Mapped[int] = mapped_column(Integer)
     image: Mapped[bytes] = mapped_column(LargeBinary)
+
+
+# ---------------------------------------------------------------------------
+# Instrument data import
+# ---------------------------------------------------------------------------
+
+
+class ImportTemplate(Base):
+    """How to read one instrument's CSV / TXT export into a method's parameters
+    (stored as JSON; see services/instrument_import.py)."""
+
+    __tablename__ = "import_templates"
+    __table_args__ = (UniqueConstraint("method_code", "name", name="uq_import_templates_method_code"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100))
+    method_code: Mapped[str] = mapped_column(String(40), index=True)
+    settings: Mapped[str] = mapped_column(Text)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    updated_at: Mapped[datetime | None]
+    updated_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+
+
+class ImportedFile(Base):
+    """An instrument file imported into a test, stored exactly as read, with the
+    template settings used and the values found. Immutable (enforced by triggers)."""
+
+    __tablename__ = "imported_files"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    analysis_id: Mapped[int] = mapped_column(ForeignKey("analyses.id"), index=True)
+    template_id: Mapped[int | None] = mapped_column(ForeignKey("import_templates.id"))
+    template_name: Mapped[str] = mapped_column(String(100))
+    settings: Mapped[str] = mapped_column(Text)
+    file_name: Mapped[str] = mapped_column(String(255))
+    content: Mapped[bytes] = mapped_column(LargeBinary)
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    sha256: Mapped[str] = mapped_column(String(64))
+    values_found: Mapped[str] = mapped_column(Text)
+    imported_at: Mapped[datetime] = mapped_column(default=utcnow)
+    imported_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))

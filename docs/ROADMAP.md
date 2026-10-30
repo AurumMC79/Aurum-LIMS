@@ -58,9 +58,9 @@ Phase 1: user accounts, roles, the audit trail and electronic signatures.
 - Automatic backups: daily at start-up, before every database update, and on demand; checked, pruned and audited
 - LOD / LOQ on number results: reported as ND or < LOQ, with conservative conformance and CoA notes
 - Amended certificates: QA reopens a decided sample with an e-signature and reason; the re-issued certificate supersedes the old one (`-A1`, `-A2`)
+- Instrument data import: CSV/TXT import templates per method, live preview, raw files stored and audited
 
 ## Later
-- Instrument data import (CSV/TXT exports from HPLC, GC, balances, pH meters, etc.)
 - Dashboards: turnaround time, workload, OOS trends, control charts
 - Multi-user network deployment (shared database / PostgreSQL)
 - Validation package templates (URS, IQ/OQ/PQ protocols, traceability matrix)
