@@ -10,6 +10,7 @@ from aurum_lims.db import Database
 from aurum_lims.services import auth
 from aurum_lims.services.auth import LoginResult
 from aurum_lims.ui.common import (
+    allow,
     app_icon,
     error_label,
     logo_pixmap,
@@ -60,7 +61,7 @@ class LoginDialog(QDialog):
         layout.addLayout(form)
 
         self.notice = muted_label(notice)
-        self.notice.setVisible(bool(notice))
+        allow(self.notice, bool(notice))
         layout.addWidget(self.notice)
         self.error = error_label()
         layout.addWidget(self.error)

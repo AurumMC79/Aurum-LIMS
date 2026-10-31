@@ -29,7 +29,7 @@ from aurum_lims.security.identity import SessionUser
 from aurum_lims.security.roles import Permission
 from aurum_lims.services import audit
 from aurum_lims.services.audit import AuditAction
-from aurum_lims.ui.common import GridTable, format_local, muted_label, primary_button, show_error
+from aurum_lims.ui.common import allow, GridTable, format_local, muted_label, primary_button, show_error
 
 QUERY_LIMIT = 5000
 
@@ -106,7 +106,7 @@ class AuditView(QWidget):
         verify.clicked.connect(self._verify)
         self.export_button = QPushButton("Export CSV…")
         self.export_button.clicked.connect(self._export)
-        self.export_button.setVisible(user.can(Permission.EXPORT_AUDIT_TRAIL))
+        allow(self.export_button, user.can(Permission.EXPORT_AUDIT_TRAIL))
         self.count_label = muted_label("")
         actions.addWidget(refresh)
         actions.addWidget(verify)

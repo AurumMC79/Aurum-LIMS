@@ -27,7 +27,7 @@ from aurum_lims.security.roles import Permission
 from aurum_lims.services import certificates, formulas, lab_info, review
 from aurum_lims.services.esign import SignatureMeaning
 from aurum_lims.services.formulas import Conformance
-from aurum_lims.ui.common import GridTable, error_label, format_local, muted_label, open_pdf, primary_button, show_error
+from aurum_lims.ui.common import allow, GridTable, error_label, format_local, muted_label, open_pdf, primary_button, show_error
 from aurum_lims.ui.sign_dialog import SignDialog
 from aurum_lims.ui.testing_dialogs import CONFORMANCE_COLORS, ResultEntryDialog
 
@@ -193,7 +193,7 @@ class ReviewView(QWidget):
         row = QHBoxLayout()
         self.decide_button = primary_button("Decide…")
         self.decide_button.setDefault(False)
-        self.decide_button.setVisible(user.can(Permission.APPROVE_RECORDS))
+        allow(self.decide_button, user.can(Permission.APPROVE_RECORDS))
         self.sample_count = muted_label("")
         row.addWidget(self.decide_button)
         row.addStretch()

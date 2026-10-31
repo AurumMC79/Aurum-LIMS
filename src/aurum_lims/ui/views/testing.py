@@ -25,6 +25,7 @@ from aurum_lims.security.roles import Permission
 from aurum_lims.services import testing
 from aurum_lims.services.testing import AnalysisRow, AnalysisStatus
 from aurum_lims.ui.common import (
+    allow,
     GridTable,
     ask_reason,
     danger_button,
@@ -56,7 +57,7 @@ class TestingView(QWidget):
         self.enter_button = primary_button("Enter results")
         self.enter_button.setDefault(False)
         self.cancel_button = danger_button("Cancel test")
-        self.cancel_button.setVisible(user.can(Permission.EDIT_RECORDS))
+        allow(self.cancel_button, user.can(Permission.EDIT_RECORDS))
         if not user.can(Permission.EDIT_RECORDS):
             self.enter_button.setText("View results")
         self.mine = QCheckBox("Only tests assigned to me")

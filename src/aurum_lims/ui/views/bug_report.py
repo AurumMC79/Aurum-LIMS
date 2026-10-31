@@ -35,6 +35,7 @@ from aurum_lims.security.roles import Permission
 from aurum_lims.services import bug_reports
 from aurum_lims.services.bug_reports import BugStatus, Severity
 from aurum_lims.ui.common import (
+    allow,
     Card,
     GridTable,
     error_label,
@@ -252,7 +253,7 @@ class BugReportTab(QWidget):
         buttons = QHBoxLayout()
         self.view_button = QPushButton("View")
         self.status_button = QPushButton("Update status…")
-        self.status_button.setVisible(self.can_manage)
+        allow(self.status_button, self.can_manage)
         buttons.addWidget(self.view_button)
         buttons.addWidget(self.status_button)
         buttons.addStretch()

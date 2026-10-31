@@ -26,7 +26,7 @@ from aurum_lims.security.identity import SessionUser
 from aurum_lims.security.roles import Permission
 from aurum_lims.services import intake, sample_types, storage
 from aurum_lims.services.barcodes import ScanSettings, read_scan
-from aurum_lims.ui.common import Card, GridTable, format_local, muted_label, primary_button, show_error
+from aurum_lims.ui.common import allow, Card, GridTable, format_local, muted_label, primary_button, show_error
 from aurum_lims.ui.intake_designer import FormDesignerDialog
 from aurum_lims.ui.intake_form import IntakeFormWidget
 from aurum_lims.ui.sample_dialogs import show_created
@@ -53,7 +53,7 @@ class IntakeView(QWidget):
         self.version_label = muted_label("")
         top.addWidget(self.version_label, 1)
         self.design_button = QPushButton("Design form…")
-        self.design_button.setVisible(self.can_design)
+        allow(self.design_button, self.can_design)
         self.design_button.clicked.connect(lambda *_: self._design())
         top.addWidget(self.design_button)
         layout.addLayout(top)
@@ -84,7 +84,7 @@ class IntakeView(QWidget):
         buttons = QHBoxLayout()
         self.submit_button = primary_button("Submit sample")
         self.submit_button.clicked.connect(lambda *_: self._submit())
-        self.submit_button.setVisible(self.can_submit)
+        allow(self.submit_button, self.can_submit)
         clear = QPushButton("Clear form")
         clear.clicked.connect(lambda *_: self._clear())
         buttons.addWidget(self.submit_button)

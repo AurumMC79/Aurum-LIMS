@@ -25,7 +25,7 @@ from aurum_lims.security.roles import Permission
 from aurum_lims.services import auth
 from aurum_lims.services import review as review_service
 from aurum_lims.services.settings import get_security_settings
-from aurum_lims.ui.common import app_icon, logo_pixmap
+from aurum_lims.ui.common import allow, app_icon, logo_pixmap
 from aurum_lims.ui.lock_screen import IdleWatcher, LockDialog
 from aurum_lims.ui.navigation import NavigationPanel
 from aurum_lims.ui.reload import UpdateWatcher
@@ -189,7 +189,7 @@ class MainWindow(QMainWindow):
         reload_button.setToolTip("Restart Aurum LIMS to load the latest version. You stay signed in and come back "
                                  "to this page. (Ctrl+Shift+R)\nPress F5 to just refresh the data on this page.")
         reload_button.clicked.connect(lambda *_: self.request_reload())
-        reload_button.setVisible(self.user.can(Permission.RELOAD_APP))
+        allow(reload_button, self.user.can(Permission.RELOAD_APP))
         self.reload_button = reload_button
         layout.addWidget(reload_button)
         lock = QPushButton("Lock")

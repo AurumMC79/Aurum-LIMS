@@ -30,6 +30,7 @@ from aurum_lims.security.roles import Permission
 from aurum_lims.services import samples, storage
 from aurum_lims.services.storage import LocationKind
 from aurum_lims.ui.common import (
+    allow,
     GridTable,
     ask_reason,
     error_label,
@@ -116,7 +117,7 @@ class StorageView(QWidget):
         self.edit_button = QPushButton("Edit")
         self.toggle_button = QPushButton("Deactivate")
         for button in (self.add_button, self.add_child_button, self.edit_button, self.toggle_button):
-            button.setVisible(can_manage)
+            allow(button, can_manage)
             toolbar.addWidget(button)
         toolbar.addStretch()
         layout.addLayout(toolbar)

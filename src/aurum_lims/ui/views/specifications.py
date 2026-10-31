@@ -32,6 +32,7 @@ from aurum_lims.services.formulas import LimitType
 from aurum_lims.services.specifications import LimitSpec
 from aurum_lims.services.versioning import VersionStatus
 from aurum_lims.ui.common import (
+    allow,
     GridTable,
     ask_reason,
     error_label,
@@ -253,7 +254,7 @@ class SpecificationsView(QWidget):
         self.version_button = QPushButton("New version")
         self.activate_button = QPushButton("Approve && activate")
         self.retire_button = QPushButton("Retire")
-        self.activate_button.setVisible(user.can(Permission.APPROVE_RECORDS))
+        allow(self.activate_button, user.can(Permission.APPROVE_RECORDS))
         self.show_retired = QCheckBox("Show retired versions")
         for b in (self.new_button, self.edit_button, self.version_button, self.activate_button, self.retire_button):
             toolbar.addWidget(b)

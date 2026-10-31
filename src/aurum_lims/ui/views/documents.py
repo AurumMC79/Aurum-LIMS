@@ -35,6 +35,7 @@ from aurum_lims.security.roles import Permission
 from aurum_lims.services import documents
 from aurum_lims.services.documents import MAX_PDF_BYTES, DocType
 from aurum_lims.ui.common import (
+    allow,
     GridTable,
     ask_reason,
     error_label,
@@ -249,7 +250,7 @@ class DocumentsView(QWidget):
         self.edit_button = QPushButton("Edit details…")
         self.retire_button = QPushButton("Retire…")
         for b in (self.add_button, self.attach_button, self.revision_button, self.edit_button, self.retire_button):
-            b.setVisible(can_manage)
+            allow(b, can_manage)
         for b in (self.open_button, self.history_button, self.add_button, self.attach_button, self.revision_button,
                   self.edit_button, self.retire_button):
             toolbar.addWidget(b)
@@ -260,7 +261,7 @@ class DocumentsView(QWidget):
         self.search.setPlaceholderText("Search number, title or category…")
         self.search.textChanged.connect(lambda *_: self.refresh())
         self.show_retired = QCheckBox("Show retired")
-        self.show_retired.setVisible(can_manage)
+        allow(self.show_retired, can_manage)
         self.show_retired.toggled.connect(lambda *_: self.refresh())
         self.count = muted_label("")
         filters.addWidget(self.search, 1)

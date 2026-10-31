@@ -87,6 +87,18 @@ def error_label() -> QLabel:
     return label
 
 
+def allow(widget: QWidget, allowed: bool) -> None:
+    """Show a control only if allowed (e.g. by the user's role).
+
+    Never shows a control that is not on a page yet: Qt would show it as a tiny window of its own until it
+    is added to a layout, which made dozens of buttons flash up while the app started. Controls that are not
+    hidden appear together with the page they are placed on."""
+    if not allowed:
+        widget.hide()
+    elif not widget.isWindow():
+        widget.show()
+
+
 def show_label_message(label: QLabel, message: str) -> None:
     label.setText(message)
     label.setVisible(bool(message))

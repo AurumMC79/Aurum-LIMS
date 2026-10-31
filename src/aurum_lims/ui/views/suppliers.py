@@ -30,7 +30,7 @@ from aurum_lims.security.identity import SessionUser
 from aurum_lims.security.roles import Permission
 from aurum_lims.services import inventory, suppliers
 from aurum_lims.services.suppliers import APPROVED_STATUSES, SupplierDetails, SupplierStatus
-from aurum_lims.ui.common import ask_reason, error_label, muted_label, primary_button, show_error, show_label_message
+from aurum_lims.ui.common import allow, ask_reason, error_label, muted_label, primary_button, show_error, show_label_message
 from aurum_lims.ui.views.instruments import AMBER, GREEN, GREY, RED, _table
 
 STATUS_COLOURS = {SupplierStatus.APPROVED: GREEN, SupplierStatus.CONDITIONAL: AMBER,
@@ -153,7 +153,7 @@ class SuppliersTab(QWidget):
         self.edit_button = QPushButton("Edit")
         self.active_button = QPushButton("Deactivate")
         for b in (self.new_button, self.edit_button, self.active_button):
-            b.setVisible(self.can_manage)
+            allow(b, self.can_manage)
             bar.addWidget(b)
         bar.addStretch()
         self.show_inactive = QCheckBox("Show inactive")

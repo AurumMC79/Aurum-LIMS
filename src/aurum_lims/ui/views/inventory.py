@@ -34,6 +34,7 @@ from aurum_lims.security.roles import Permission
 from aurum_lims.services import formulas, inventory, storage, suppliers
 from aurum_lims.services.inventory import UNITS, ItemDetails, ItemKind
 from aurum_lims.ui.common import (
+    allow,
     ask_reason,
     error_label,
     fill_location_combo,
@@ -251,7 +252,7 @@ class InventoryView(QWidget):
         self.discard_button = QPushButton("Discard…")
         self.discard_button.setProperty("danger", True)
         for b in (self.receive_button, self.open_button, self.adjust_button, self.discard_button):
-            b.setVisible(can_manage)
+            allow(b, can_manage)
             toolbar.addWidget(b)
         toolbar.addStretch()
         self.kind_filter = QComboBox()
@@ -287,7 +288,7 @@ class InventoryView(QWidget):
         self.new_item_button.setDefault(False)
         self.edit_item_button = QPushButton("Edit")
         for b in (self.new_item_button, self.edit_item_button):
-            b.setVisible(can_manage)
+            allow(b, can_manage)
             toolbar.addWidget(b)
         toolbar.addStretch()
         self.show_inactive = QCheckBox("Show inactive")

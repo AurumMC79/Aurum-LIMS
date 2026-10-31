@@ -34,6 +34,7 @@ from aurum_lims.services.inventory import ItemKind
 from aurum_lims.services.methods import ParameterSpec, RequirementSpec
 from aurum_lims.services.versioning import VersionStatus
 from aurum_lims.ui.common import (
+    allow,
     GridTable,
     ask_reason,
     error_label,
@@ -381,9 +382,9 @@ class MethodsView(QWidget):
         self.retire_button = QPushButton("Retire")
         self.templates_button = QPushButton("Import templates…")
         self.templates_button.setToolTip("How instrument CSV / TXT exports are read into this method")
-        self.templates_button.setVisible(user.can(Permission.MANAGE_MASTER_DATA))
+        allow(self.templates_button, user.can(Permission.MANAGE_MASTER_DATA))
         self.show_retired = QCheckBox("Show retired versions")
-        self.activate_button.setVisible(user.can(Permission.APPROVE_RECORDS))
+        allow(self.activate_button, user.can(Permission.APPROVE_RECORDS))
         for b in (self.new_button, self.edit_button, self.version_button, self.activate_button, self.retire_button,
                   self.templates_button):
             toolbar.addWidget(b)

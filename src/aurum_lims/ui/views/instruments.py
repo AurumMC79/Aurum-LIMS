@@ -36,6 +36,7 @@ from aurum_lims.security.roles import Permission
 from aurum_lims.services import instruments
 from aurum_lims.services.instruments import CATEGORIES, CHECK_EVENTS, RESULTS, EventType, InstrumentDetails
 from aurum_lims.ui.common import (
+    allow,
     GridTable,
     ask_reason,
     error_label,
@@ -257,9 +258,9 @@ class InstrumentsView(QWidget):
         self.new_button.setDefault(False)
         self.edit_button = QPushButton("Edit")
         self.event_button = QPushButton("Record calibration / event…")
-        self.new_button.setVisible(can_manage)
-        self.edit_button.setVisible(can_manage)
-        self.event_button.setVisible(can_record)
+        allow(self.new_button, can_manage)
+        allow(self.edit_button, can_manage)
+        allow(self.event_button, can_record)
         self.schedule_button = QPushButton("Maintenance schedule…")
         self.show_retired = QCheckBox("Show retired")
         for b in (self.new_button, self.edit_button, self.event_button, self.schedule_button):

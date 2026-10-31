@@ -35,7 +35,7 @@ from aurum_lims.security.identity import SessionUser
 from aurum_lims.security.roles import Permission
 from aurum_lims.services import instruments, maintenance
 from aurum_lims.services.maintenance import Outcome, PlanSpec, TaskResult, TaskSpec
-from aurum_lims.ui.common import GridTable, ask_reason, error_label, muted_label, primary_button, show_error, \
+from aurum_lims.ui.common import allow, GridTable, ask_reason, error_label, muted_label, primary_button, show_error, \
     show_label_message
 
 RED, AMBER, GREEN, GREY = "#b42318", "#b54708", "#067647", "#8b98a8"
@@ -320,9 +320,9 @@ class PlansPanel(QWidget):
         self.copy_button = QPushButton("Copy to…")
         self.active_button = QPushButton("Deactivate")
         self.show_inactive = QCheckBox("Show inactive")
-        self.perform_button.setVisible(can_record)
+        allow(self.perform_button, can_record)
         for b in (self.new_button, self.edit_button, self.copy_button, self.active_button):
-            b.setVisible(can_manage)
+            allow(b, can_manage)
         for b in (self.perform_button, self.new_button, self.edit_button, self.copy_button, self.active_button):
             bar.addWidget(b)
         bar.addStretch()
@@ -474,7 +474,7 @@ class ScheduleDialog(QDialog):
         bar = QHBoxLayout()
         self.perform_button = primary_button("Perform…")
         self.perform_button.setDefault(False)
-        self.perform_button.setVisible(user.can(Permission.MANAGE_MASTER_DATA) or user.can(Permission.EDIT_RECORDS))
+        allow(self.perform_button, user.can(Permission.MANAGE_MASTER_DATA) or user.can(Permission.EDIT_RECORDS))
         self.perform_button.clicked.connect(lambda *_: self._perform())
         close = QPushButton("Close")
         close.clicked.connect(self.accept)

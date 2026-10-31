@@ -28,6 +28,7 @@ from aurum_lims.services.samples import ON_HAND_STATUSES, SampleStatus, SampleSu
 from aurum_lims.services.testing import ASSIGNABLE
 from aurum_lims.ui.testing_dialogs import AssignTestsDialog
 from aurum_lims.ui.common import (
+    allow,
     GridTable,
     ask_reason,
     danger_button,
@@ -82,12 +83,12 @@ class SamplesView(QWidget):
         self.edit_button = QPushButton("Correct details")
         self.dispose_button = danger_button("Dispose")
         self.cancel_button = danger_button("Cancel registration")
-        self.register_button.setVisible(user.can(Permission.CREATE_RECORDS))
-        self.aliquot_button.setVisible(user.can(Permission.CREATE_RECORDS))
-        self.tests_button.setVisible(user.can(Permission.CREATE_RECORDS) and user.can(Permission.EDIT_RECORDS))
+        allow(self.register_button, user.can(Permission.CREATE_RECORDS))
+        allow(self.aliquot_button, user.can(Permission.CREATE_RECORDS))
+        allow(self.tests_button, user.can(Permission.CREATE_RECORDS) and user.can(Permission.EDIT_RECORDS))
         for button in (self.receive_button, self.transfer_button, self.edit_button, self.dispose_button,
                        self.cancel_button):
-            button.setVisible(user.can(Permission.EDIT_RECORDS))
+            allow(button, user.can(Permission.EDIT_RECORDS))
         for button in (self.register_button, self.details_button, self.tests_button, self.receive_button,
                        self.transfer_button,
                        self.aliquot_button, self.edit_button, self.dispose_button, self.cancel_button):
