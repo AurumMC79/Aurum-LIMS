@@ -266,11 +266,12 @@ class NavigationPanel(QWidget):
             self._stop_watching()
             return False
         if self.watching and self.flyout.isVisible():
-            if event.type() == QEvent.MouseButtonPress:
-                widget = watched if isinstance(watched, QWidget) else None
-                inside = widget is not None and (self.flyout.isAncestorOf(widget) or widget is self.flyout or
-                                                 any(b is widget or b.isAncestorOf(widget)
-                                                     for b in self.headings.values()))
+            # A real click reaches the window (a QWindow) first and then the widget under the pointer. Only the
+            # widget tells us where the click is; closing on the window's copy would hide the menu before its
+            # button could be clicked.
+            if event.type() == QEvent.MouseButtonPress and isinstance(watched, QWidget):
+                inside = (watched is self.flyout or self.flyout.isAncestorOf(watched) or
+                          any(b is watched or b.isAncestorOf(watched) for b in self.headings.values()))
                 if not inside:
                     self.close_flyout()
             elif event.type() == QEvent.KeyPress and event.key() == Qt.Key_Escape:

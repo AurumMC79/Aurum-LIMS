@@ -83,3 +83,33 @@ def test_unknown_pages_go_under_more(qtbot):
     qtbot.addWidget(host)
     nav = NavigationPanel(["Dashboard", "Samples", "Something new"], host)
     assert [name for name, _ in nav.groups] == ["Dashboard", "Lab work", OTHER]
+
+
+def _real_click(window, widget):
+    """Click like a real mouse: the press reaches the window first, then the widget under the pointer."""
+    from PySide6.QtCore import QPoint
+    from PySide6.QtTest import QTest
+
+    QTest.mouseClick(window.windowHandle(), Qt.LeftButton, Qt.NoModifier,
+                     widget.mapTo(window, QPoint(widget.width() // 2, widget.height() // 2)))
+
+
+def test_real_mouse_clicks_open_pages(qtbot, db, admin):
+    """BUG: clicking a page in the menu did nothing – the press reached the window first and closed the menu."""
+    window = _window(qtbot, db, admin)
+    qtbot.waitExposed(window)
+    nav = window.nav
+    _real_click(window, nav.headings["Lab work"])
+    assert nav.flyout.isVisible() and nav.pinned
+    [samples] = [b for b in nav.flyout.buttons if b.text() == "Samples"]
+    _real_click(window, samples)
+    assert window.page_title.text() == "Samples" and not nav.flyout.isVisible()
+    _real_click(window, nav.headings["Setup"])
+    [users] = [b for b in nav.flyout.buttons if b.text() == "Users"]
+    _real_click(window, users)
+    assert window.page_title.text() == "Users"
+    _real_click(window, nav.headings["Dashboard"])
+    assert window.page_title.text() == "Dashboard"
+    _real_click(window, nav.headings["Setup"])  # a real click elsewhere still closes the menu
+    _real_click(window, window.page_title)
+    assert not nav.flyout.isVisible()
