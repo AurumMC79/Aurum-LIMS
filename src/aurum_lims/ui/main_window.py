@@ -10,8 +10,6 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
-    QListWidget,
-    QListWidgetItem,
     QMainWindow,
     QMessageBox,
     QPushButton,
@@ -29,6 +27,7 @@ from aurum_lims.services import review as review_service
 from aurum_lims.services.settings import get_security_settings
 from aurum_lims.ui.common import app_icon, logo_pixmap
 from aurum_lims.ui.lock_screen import IdleWatcher, LockDialog
+from aurum_lims.ui.navigation import NavigationPanel
 from aurum_lims.ui.reload import UpdateWatcher
 from aurum_lims.ui.views.account import AccountView
 from aurum_lims.ui.views.audit import AuditView
@@ -69,9 +68,6 @@ class MainWindow(QMainWindow):
 
         self.pages: list[QWidget] = []
         self.stack = QStackedWidget()
-        self.nav = QListWidget()
-        self.nav.setObjectName("NavList")
-        self.nav.setFocusPolicy(Qt.NoFocus)
 
         self._add_page(DashboardView(db, user))
         if user.can(Permission.CREATE_RECORDS) or user.can(Permission.MANAGE_MASTER_DATA):
@@ -105,6 +101,7 @@ class MainWindow(QMainWindow):
         self.page_title.setObjectName("PageTitle")
 
         central = QWidget()
+        self.nav = NavigationPanel([p.title for p in self.pages], central)
         root = QHBoxLayout(central)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
@@ -120,8 +117,8 @@ class MainWindow(QMainWindow):
         root.addWidget(content, 1)
         self.setCentralWidget(central)
 
-        self.nav.currentRowChanged.connect(self._show_page)
-        self.nav.setCurrentRow(0)
+        self.nav.page_chosen.connect(self._show_page)
+        self._show_page(0)
 
         with db.session() as session:
             timeout = get_security_settings(session).session_timeout_minutes
@@ -141,7 +138,6 @@ class MainWindow(QMainWindow):
     def _add_page(self, page: QWidget) -> None:
         self.pages.append(page)
         self.stack.addWidget(page)
-        QListWidgetItem(page.title, self.nav)
 
     def _build_sidebar(self) -> QWidget:
         sidebar = QFrame()
@@ -254,12 +250,13 @@ class MainWindow(QMainWindow):
         page = self.pages[index]
         self.stack.setCurrentWidget(page)
         self.page_title.setText(page.title)
+        self.nav.set_current(index)
         page.refresh()
 
     def show_page(self, title: str) -> bool:
         for i, page in enumerate(self.pages):
             if page.title == title:
-                self.nav.setCurrentRow(i)
+                self._show_page(i)
                 return True
         return False
 

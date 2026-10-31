@@ -12,6 +12,23 @@ A Laboratory Information Management System for QC and regulated laboratories
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for what could come next.
 
+## Finding your way around
+
+The sidebar groups the pages under a few headings. Hover over a heading (or click it to keep it open) to see
+its pages, then click one. The heading of the page you are on is highlighted, with the page's name underneath.
+Headings only show the pages your role can use.
+
+| Heading | Pages |
+|---|---|
+| Dashboard | Opens directly |
+| Lab work | Sample Intaking, Samples, Testing, Review, OOS, Certificates |
+| Equipment & materials | Instruments, Inventory, Storage |
+| Quality & reports | Reports, SOP Index, Audit Trail |
+| Setup | Methods, Specifications, Sample Types, Users |
+| Settings & account | Settings, My Account |
+
+The grouping is defined in `src/aurum_lims/ui/navigation.py` (`NAV_GROUPS`).
+
 ## SOP index and bug reports
 
 | Area | What it does |
