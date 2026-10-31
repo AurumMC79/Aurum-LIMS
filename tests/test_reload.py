@@ -144,3 +144,49 @@ def test_reload_button_only_for_permitted_roles(qtbot, db, admin, make_user, rol
 
 
 from PySide6.QtWidgets import QApplication  # noqa: E402
+
+
+def test_new_copy_waits_until_the_old_copy_has_exited(monkeypatch):
+    """The two copies must never have the database open together (saves could go missing from disk)."""
+    import subprocess
+    import sys
+    import time
+
+    old = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(0.6)"])
+    monkeypatch.setenv(reload_module.PARENT_ENV, str(old.pid))
+    started = time.monotonic()
+    assert reload_module.wait_for_previous_instance()
+    assert time.monotonic() - started >= 0.4 and old.poll() is not None
+    assert reload_module.PARENT_ENV not in __import__("os").environ  # used once
+    # Gives up (and carries on) if the old copy hangs.
+    stuck = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+    try:
+        monkeypatch.setenv(reload_module.PARENT_ENV, str(stuck.pid))
+        assert reload_module.wait_for_previous_instance(timeout=0.3) is False
+    finally:
+        stuck.kill()
+    assert reload_module.wait_for_previous_instance()  # not started by Reload: nothing to wait for
+
+
+def test_old_copy_closes_the_database_before_starting_the_new_one(qtbot, db, admin, monkeypatch):
+    order = []
+    monkeypatch.setattr("aurum_lims.app.start_new_instance", lambda token, page: order.append("start"))
+    app = QApplication.instance()
+    monkeypatch.setattr(app, "quit", lambda: order.append("quit"))
+    controller = AppController(app, db)
+    controller._open_main_window(admin)
+    qtbot.addWidget(controller.window)
+    original = db.dispose
+    monkeypatch.setattr(db, "dispose", lambda: (order.append("dispose"), original()))
+    controller.window.request_reload(confirm=False)
+    assert order == ["dispose", "start", "quit"]
+
+
+def test_start_new_instance_passes_its_process_id(monkeypatch):
+    import os
+    import subprocess
+
+    seen = {}
+    monkeypatch.setattr(subprocess, "Popen", lambda cmd, env, **kw: seen.update(env=env))
+    reload_module.start_new_instance("token", "Samples")
+    assert seen["env"][reload_module.PARENT_ENV] == str(os.getpid())

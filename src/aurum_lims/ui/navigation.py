@@ -77,9 +77,13 @@ class FlyoutMenu(QFrame):
         self.hide()
 
     def show_items(self, group: str, items: list[tuple[int, str]], current: int, anchor: QWidget) -> None:
+        # Hide first: widgets added to an already visible frame stay hidden (BUG-0005, empty menu when moving
+        # from one heading to another); showing the frame again below shows the new entries.
+        self.hide()
         while self.layout_.count():
             widget = self.layout_.takeAt(0).widget()
             if widget is not None:
+                widget.hide()
                 widget.deleteLater()
         title = QLabel(group)
         title.setObjectName("FlyoutTitle")
@@ -96,15 +100,17 @@ class FlyoutMenu(QFrame):
             self.layout_.addWidget(button)
             self.buttons.append(button)
         self.group = group
-        self.adjustSize()
         self.setMinimumWidth(210)
+        self.show()
+        self.raise_()
+        # Size and place it once shown, so the entries' styling (padding, fonts) is counted.
+        for button in self.buttons:
+            button.ensurePolished()
         self.adjustSize()
         host = self.parentWidget()
         top_left = anchor.mapTo(host, QPoint(anchor.width(), 0))
         y = max(4, min(top_left.y() - 8, host.height() - self.height() - 4))
         self.move(top_left.x(), y)
-        self.show()
-        self.raise_()
 
     def enterEvent(self, event) -> None:
         super().enterEvent(event)

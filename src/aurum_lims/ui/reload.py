@@ -4,19 +4,30 @@ A reload starts a fresh copy of Aurum LIMS and closes this one. The new copy
 picks up the latest code (and runs any database upgrade), and continues the
 same user's session on the same page using a single-use code from
 ``auth.create_resume_token`` passed through the environment.
+
+The two copies must never have the database open at the same time: when the
+old copy closed its last connection while the new one was starting, SQLite
+could remove the write-ahead log the new copy was already writing to, so its
+saves stayed invisible on disk until it closed (and would have been lost in a
+crash). So the old copy closes its database before starting the new one, and
+the new copy waits until the old process has exited before opening it.
 """
 
 from __future__ import annotations
 
+import logging
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QTimer, Signal
 
 RESUME_ENV = "AURUM_LIMS_RESUME_TOKEN"
 PAGE_ENV = "AURUM_LIMS_RESUME_PAGE"
+PARENT_ENV = "AURUM_LIMS_RESUME_PARENT"  # process id of the copy being replaced
+log = logging.getLogger("aurum_lims")
 PACKAGE_DIR = Path(__file__).resolve().parent.parent
 WATCHED_SUFFIXES = {".py", ".qss"}
 
@@ -31,12 +42,47 @@ def restart_command() -> list[str]:
 def start_new_instance(token: str, page: str | None) -> subprocess.Popen:
     env = os.environ.copy()
     env[RESUME_ENV] = token
+    env[PARENT_ENV] = str(os.getpid())
     if page:
         env[PAGE_ENV] = page
     flags = 0
     if sys.platform == "win32":
         flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
     return subprocess.Popen(restart_command(), env=env, cwd=os.getcwd(), close_fds=True, creationflags=flags)
+
+
+def _process_running(pid: int) -> bool:
+    if sys.platform == "win32":
+        import ctypes
+
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.OpenProcess(0x00100000, False, pid)  # SYNCHRONIZE
+        if not handle:
+            return False
+        try:
+            return kernel32.WaitForSingleObject(handle, 0) == 0x00000102  # WAIT_TIMEOUT: still running
+        finally:
+            kernel32.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+def wait_for_previous_instance(timeout: float = 20.0) -> bool:
+    """When started by Reload, wait until the copy being replaced has exited (so only one copy ever has
+    the database open). Returns False if it was still running after ``timeout`` seconds."""
+    value = os.environ.pop(PARENT_ENV, None)
+    if not value or not value.isdigit():
+        return True
+    pid, deadline = int(value), time.monotonic() + timeout
+    while _process_running(pid):
+        if time.monotonic() > deadline:
+            log.warning("The previous copy (process %s) was still running after %.0f s", pid, timeout)
+            return False
+        time.sleep(0.05)
+    return True
 
 
 def take_resume_request() -> tuple[str | None, str | None]:

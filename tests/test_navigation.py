@@ -113,3 +113,21 @@ def test_real_mouse_clicks_open_pages(qtbot, db, admin):
     _real_click(window, nav.headings["Setup"])  # a real click elsewhere still closes the menu
     _real_click(window, window.page_title)
     assert not nav.flyout.isVisible()
+
+
+def test_switching_menus_shows_the_new_pages(qtbot, db, admin):
+    """BUG-0005: moving from one heading to another left the flyout empty (the new entries stayed hidden)."""
+    window = _window(qtbot, db, admin)
+    nav = window.nav
+    for first, second in (("Settings & account", "Setup"), ("Lab work", "Equipment & materials")):
+        nav.open_group(second)  # the same menu opened fresh, for comparison
+        fresh_height = nav.flyout.height()
+        nav.close_flyout()
+        nav._hovered(first)
+        qtbot.waitUntil(lambda: nav.flyout.isVisible(), timeout=1000)
+        nav._hovered(second)  # switches straight away while the menu is open
+        assert nav.flyout.group == second
+        texts = [b.text() for b in nav.flyout.buttons if b.isVisibleTo(nav.flyout)]
+        assert texts == [t for _, t in nav.items_of(second)]
+        assert nav.flyout.height() == fresh_height  # not squashed
+        nav.close_flyout()

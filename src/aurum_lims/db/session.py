@@ -67,6 +67,22 @@ class Database:
             raise
         finally:
             session.close()
+        self.checkpoint()  # nearly free when nothing new was written
+
+    def checkpoint(self) -> None:
+        """Copy saved changes from the write-ahead log into the database file straight away (SQLite).
+
+        Normally SQLite does this every ~1000 pages, so small saves can sit in the -wal file for a long time.
+        Doing it after each save keeps the main file complete on disk at all times: other programs (backups,
+        the bug-report reader) see the latest data, and nothing depends on the -wal file surviving.
+        PASSIVE never waits for or blocks other connections."""
+        if self.engine.dialect.name != "sqlite":
+            return
+        raw = self.engine.raw_connection()
+        try:
+            raw.cursor().execute("PRAGMA wal_checkpoint(PASSIVE)")
+        finally:
+            raw.close()
 
     def dispose(self) -> None:
         self.engine.dispose()

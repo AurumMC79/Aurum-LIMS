@@ -19,7 +19,7 @@ from aurum_lims.ui.common import app_icon, load_stylesheet
 from aurum_lims.ui.first_run_dialog import FirstRunDialog
 from aurum_lims.ui.login_dialog import LoginDialog
 from aurum_lims.ui.main_window import MainWindow
-from aurum_lims.ui.reload import start_new_instance, take_resume_request
+from aurum_lims.ui.reload import start_new_instance, take_resume_request, wait_for_previous_instance
 
 log = logging.getLogger("aurum_lims")
 
@@ -88,6 +88,8 @@ class AppController(QObject):
         with self.db.session() as session:
             auth.logout(session, user, "app reload")
             token = auth.create_resume_token(session, user)
+        # Close every database connection before the new copy starts, so the two never share the file.
+        self.db.dispose()
         try:
             start_new_instance(token, page)
         except OSError as exc:
@@ -171,6 +173,7 @@ def main() -> int:
     app.setQuitOnLastWindowClosed(False)
     _install_exception_hook()
 
+    wait_for_previous_instance()  # after Reload: let the old copy finish closing the database
     try:
         db = Database(config.database_url())
         # Copy the database before an update changes it, so the update can always be undone.
